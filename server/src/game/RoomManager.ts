@@ -127,6 +127,8 @@ class RoomManagerImpl {
     this.ensureReaper();
 
     logger.info({ roomId: room.id, code, hostId: host.userId }, 'room created');
+    this.lifecycle.onCreated?.(room);
+
     return room;
   }
 
@@ -149,6 +151,29 @@ class RoomManagerImpl {
 
   get size(): number {
     return this.rooms.size;
+  }
+
+  /** Codes of every open room, for the directory heartbeat. */
+  activeCodes(): string[] {
+    return [...this.codeIndex.keys()];
+  }
+
+  /* ------------------------------------------------------- lifecycle - */
+
+  /**
+   * Notified when a room opens or closes.
+   *
+   * An observer rather than a direct call into the cluster layer: `RoomManager`
+   * owns room state and should not know that a Redis directory exists. The
+   * bootstrap wires the two together, which also keeps the import graph acyclic.
+   */
+  private lifecycle: { onCreated?: (room: Room) => void; onClosed?: (room: Room) => void } = {};
+
+  setLifecycleListener(listener: {
+    onCreated?: (room: Room) => void;
+    onClosed?: (room: Room) => void;
+  }): void {
+    this.lifecycle = listener;
   }
 
   /* ---------------------------------------------------------- mutation - */
@@ -271,6 +296,7 @@ class RoomManagerImpl {
     this.rooms.delete(room.id);
     this.codeIndex.delete(room.code);
     logger.info({ roomId: room.id, code: room.code, reason }, 'room closed');
+    this.lifecycle.onClosed?.(room);
   }
 
   /* ------------------------------------------------------------ reaper - */

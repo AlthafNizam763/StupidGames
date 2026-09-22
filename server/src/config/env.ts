@@ -34,6 +34,13 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   /*
+   * Optional. Unset means single-instance with in-memory rooms, which is the
+   * right setup for development and a single-region launch. Set it and the
+   * Socket.IO adapter and room directory both go distributed (DEPLOYMENT.md).
+   */
+  REDIS_URL: z.string().optional(),
+
+  /*
    * Token signing. Access and refresh use *different* secrets so a token minted
    * for one purpose cannot be replayed as the other (SECURITY.md).
    *
@@ -113,6 +120,7 @@ export const config = {
   port: raw.PORT,
   logLevel: raw.LOG_LEVEL,
   mongodbUri: raw.MONGODB_URI,
+  redisUrl: raw.REDIS_URL && raw.REDIS_URL.trim().length > 0 ? raw.REDIS_URL.trim() : null,
 
   /**
    * Parsed once at startup. An empty entry would match nothing and a trailing

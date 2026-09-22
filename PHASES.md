@@ -11,7 +11,7 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 5 | Home / Profile / Settings | **done** |
 | 6 | Room creation and joining | **done** |
 | 7 | Lobby | **done** |
-| 8 | Socket.IO architecture | partly done — see Phase 7 |
+| 8 | Socket.IO architecture | **done** |
 | 9 | Canvas game engine | **done** |
 | 10 | Map + collision | next |
 | 11 | Player movement | |
@@ -298,3 +298,29 @@ The Canvas game engine (§8, §41), and the mobile controls that drive it (§7).
 **Diagonal movement is normalised.** Holding W and D otherwise gives a vector of length 1.41 and a player who moves 41% faster diagonally — and the server's speed check would reject it as a hack.
 
 **The joystick has a floating origin.** It appears where the thumb lands rather than at a fixed point, so nobody has to find it by feel while playing.
+
+## Phase 8 — what was built
+
+The remainder of the socket architecture, completing what Phase 7 started.
+
+**Payload validation at the socket boundary.** SOCKET_EVENTS.md said every socket payload was validated before reaching a manager. That was true of REST and *not* of sockets, where handlers took whatever arrived. Every room event now parses through a Zod schema first. This matters more here than over REST: a socket payload passes through neither the body parser nor the MongoDB-operator guard, so `{ code: { $ne: null } }` arrived intact. The settings schema is `.strict()` rather than stripping — a host sending an unknown key is on a modified or mismatched client, and silently ignoring it would leave them believing a setting applied.
+
+**Redis adapter and room directory.** DEPLOYMENT.md names three things scale-out needs; two of them are code and are now built. The Socket.IO Redis adapter republishes every broadcast so instances reach each other's sockets, and a Redis-backed room directory records which instance owns which room, with a TTL and a heartbeat so a crashed process stops advertising rooms it no longer has. Both are optional: with no `REDIS_URL` the server runs exactly as before, single-instance with in-memory rooms. The third piece, sticky sessions, is platform configuration.
+
+**`SequenceGuard`.** Monotonic input-sequence checking, built with the rest of the socket layer rather than bolted onto the movement handler in Phase 11. Rejects replays and reordered packets, and resets on reconnect — without which a returning player's restarted counter would look like a replay and they could not move.
+
+**Shutdown notification.** Connected players are told the instance is going away before sockets close. Previously a deploy simply dropped every connection and the client found its room gone with nothing to explain why.
+
+**Verification**: 36 new server tests (161 total). Plus two end-to-end passes — 10 forged payloads rejected over a real socket, and a 6-check adapter test proving a broadcast on one Socket.IO server reaches a client on another, *with a control case* showing it does not without the adapter.
+
+## Decisions made in Phase 8
+
+**The directory is an interface with two implementations.** The alternative is `if (redis)` scattered through the socket layer. The in-memory version answers "this instance" for everything it knows about, so calling code never learns which backend it got.
+
+**A directory failure never fails the operation it accompanies.** If Redis rejects a claim, the room is still created and still works on this instance — it is only unfindable from another. Taking down room creation because a cache is unavailable would turn a degradation into an outage.
+
+**`RoomManager` does not know the cluster layer exists.** It publishes room lifecycle through an observer that the bootstrap wires to the directory, which keeps the import graph acyclic and the room registry focused on room state.
+
+**Redis needs three connections.** A client in subscriber mode cannot issue ordinary commands, so the adapter's publisher and subscriber cannot be reused for directory reads and writes.
+
+**The sequence guard rejects equality, not just regression.** A client never legitimately sends the same sequence twice, so a duplicate is a retransmission or a replay — and applying it twice is the bug either way.

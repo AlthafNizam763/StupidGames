@@ -18,7 +18,15 @@ import { logger } from '../lib/logger';
 import { roomManager, toRoomState, type Room } from '../game/RoomManager';
 import { lobbyService } from '../services/lobbyService';
 import { roomService } from '../services/roomService';
+import { createAdapter } from '@socket.io/redis-adapter';
+import {
+  InMemoryRoomDirectory,
+  RedisRoomDirectory,
+  type RoomDirectory,
+} from '../cluster/RoomDirectory';
+import { INSTANCE_ID, getRedis } from '../cluster/redis';
 import { authenticateSocket } from './auth';
+import { joinRoomPayload, kickPayload, parsePayload, readyPayload, settingsPayload } from './payloads';
 import { SocketRateLimiter } from './rateLimit';
 
 /**
@@ -66,6 +74,22 @@ function channel(roomId: string): string {
  */
 const graceTimers = new Map<string, NodeJS.Timeout>();
 
+/**
+ * The room directory: which instance owns which room.
+ *
+ * In-memory with one instance, Redis-backed with several. Exposed so the room
+ * service can claim and release entries without knowing which it got.
+ */
+let directory: RoomDirectory = new InMemoryRoomDirectory();
+
+export function getRoomDirectory(): RoomDirectory {
+  return directory;
+}
+
+/** Refreshes directory entries so a live room's claim does not expire. */
+let heartbeatTimer: NodeJS.Timeout | null = null;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 function graceKey(userId: string, roomId: string): string {
   return `${userId}:${roomId}`;
 }
@@ -94,6 +118,31 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
     pingTimeout: 25_000,
     pingInterval: 20_000,
   });
+
+  /*
+   * The Redis adapter, when Redis is configured.
+   *
+   * Without it, `namespace.to(room).emit(...)` only reaches sockets held by
+   * *this* process - so with two instances, half the lobby never sees the
+   * broadcast. The adapter republishes every emit over Redis pub/sub so the
+   * other instances deliver it to their own sockets.
+   *
+   * This is one of the three things DEPLOYMENT.md says scale-out needs. The
+   * other two are sticky sessions (platform configuration) and the room
+   * directory below.
+   */
+  const redis = getRedis();
+  if (redis) {
+    io.adapter(createAdapter(redis.pub, redis.sub, { key: 'voidline' }));
+    directory = new RedisRoomDirectory(redis.commands);
+
+    heartbeatTimer = setInterval(() => {
+      void directory.heartbeat(roomManager.activeCodes());
+    }, HEARTBEAT_INTERVAL_MS);
+    heartbeatTimer.unref();
+
+    logger.info({ instanceId: INSTANCE_ID }, 'socket.io using the redis adapter');
+  }
 
   const namespace = io.of(SOCKET_NAMESPACE);
 
@@ -172,8 +221,12 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 
     /* ------------------------------------------------------ room - */
 
-    socket.on('room:join', ({ code }, ack) =>
+    socket.on('room:join', (payload, ack) =>
       handle(ack, async () => {
+        // Validated before anything downstream sees it. A socket payload does
+        // not pass through the body parser or the operator guard, so this is
+        // the only thing standing between a handler and whatever was sent.
+        const { code } = parsePayload(joinRoomPayload, payload);
         const { room, resumed } = await lobbyService.join(userId, code);
 
         // A seat is held across a drop, so a returning player must have their
@@ -211,8 +264,9 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
       }),
     );
 
-    socket.on('room:ready', ({ ready }, ack) =>
+    socket.on('room:ready', (payload, ack) =>
       handle(ack, () => {
+        const { ready } = parsePayload(readyPayload, payload);
         const roomId = socket.data.roomId;
         if (!roomId) throw new AppError(ErrorCode.NOT_IN_ROOM);
 
@@ -222,8 +276,9 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
       }),
     );
 
-    socket.on('room:settings', (patch, ack) =>
+    socket.on('room:settings', (rawPatch, ack) =>
       handle(ack, async () => {
+        const patch = parsePayload(settingsPayload, rawPatch);
         const roomId = socket.data.roomId;
         if (!roomId) throw new AppError(ErrorCode.NOT_IN_ROOM);
 
@@ -238,8 +293,9 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
       }),
     );
 
-    socket.on('room:kick', ({ userId: targetId }, ack) =>
+    socket.on('room:kick', (payload, ack) =>
       handle(ack, () => {
+        const { userId: targetId } = parsePayload(kickPayload, payload);
         const roomId = socket.data.roomId;
         if (!roomId) throw new AppError(ErrorCode.NOT_IN_ROOM);
 
@@ -340,4 +396,34 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 export function clearGraceTimers(): void {
   for (const timer of graceTimers.values()) clearTimeout(timer);
   graceTimers.clear();
+
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+/**
+ * Tells connected players the instance is going away, then gives the message a
+ * moment to leave.
+ *
+ * Without this, a deploy simply drops every socket. The client reconnects and
+ * finds its room gone - rooms are in memory (DATABASE.md) - with nothing to
+ * explain why. A closed-room notice turns a mystery into a message.
+ *
+ * The wait is short and deliberate: shutdown has its own hard timeout, and this
+ * must not be what uses it up.
+ */
+export async function notifyShutdown(io: GameServer): Promise<void> {
+  const namespace = io.of(SOCKET_NAMESPACE);
+  const socketCount = namespace.sockets.size;
+  if (socketCount === 0) return;
+
+  logger.info({ sockets: socketCount }, 'notifying connected players of shutdown');
+
+  namespace.emit(SERVER_EVENT.ROOM_CLOSED, {
+    reason: 'The server is restarting. Your room has ended.',
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 250));
 }

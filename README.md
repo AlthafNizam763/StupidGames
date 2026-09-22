@@ -6,7 +6,7 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASE 9 of 28 complete.** Accounts, rooms and a live multiplayer lobby work end to end. The Canvas engine runs — fixed-timestep simulation, collision, camera, keyboard and joystick — against a placeholder arena with the local player only. The ORBITAL-09 map is Phase 10, networked movement Phase 11, roles Phase 12. Phase 8 (gameplay socket events, Redis adapter) was skipped and is still outstanding. `PHASES.md` tracks what is done and what is next.
+> **Status: PHASE 9 of 28 complete.** Accounts, rooms and a live multiplayer lobby work end to end. The Canvas engine runs — fixed-timestep simulation, collision, camera, keyboard and joystick — against a placeholder arena with the local player only. The ORBITAL-09 map is Phase 10, networked movement Phase 11, roles Phase 12. Phase 8 is complete: the Redis adapter and room directory are in place, and every socket payload is validated. `PHASES.md` tracks what is done and what is next.
 
 ## Requirements
 

@@ -1,6 +1,14 @@
 import type { Server } from 'node:http';
 import { createApp } from './app';
-import { clearGraceTimers, createSocketServer, type GameServer } from './sockets';
+import {
+  clearGraceTimers,
+  createSocketServer,
+  getRoomDirectory,
+  notifyShutdown,
+  type GameServer,
+} from './sockets';
+import { closeRedis, initRedis } from './cluster/redis';
+import { roomManager } from './game/RoomManager';
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './db/connect';
 import { logger } from './lib/logger';
@@ -51,9 +59,18 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
      */
     if (socketServer) {
       clearGraceTimers();
+      await notifyShutdown(socketServer);
       await socketServer.close();
       logger.info('socket server closed');
     }
+
+    // Release this instance's rooms so another one is not routed to a process
+    // that is going away. The TTL would clear them, but not before a player
+    // tried to join one.
+    await Promise.allSettled(
+      roomManager.activeCodes().map((code) => getRoomDirectory().release(code)),
+    );
+    await closeRedis();
 
     if (httpServer) {
       await new Promise<void>((resolve, reject) => {
@@ -74,6 +91,17 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
 
 async function start(): Promise<void> {
   const app = createApp();
+
+  // Opened before the socket server, which asks for the connections when it
+  // decides whether to use the Redis adapter.
+  initRedis();
+
+  // Keeps the shared directory in step with this instance's rooms, without
+  // RoomManager needing to know a directory exists.
+  roomManager.setLifecycleListener({
+    onCreated: (room) => void getRoomDirectory().claim(room.code, room.id),
+    onClosed: (room) => void getRoomDirectory().release(room.code),
+  });
 
   // Deliberately not awaited as a precondition: the server serves regardless,
   // and reports readiness separately. See db/connect.ts.
