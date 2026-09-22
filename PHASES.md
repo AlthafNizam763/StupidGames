@@ -601,3 +601,18 @@ The symptom is disproportionate: one unbuilt export produces eight type errors a
 That cost real time. Three sessions were working in this tree, and two separate red builds were each attributed to a different session's in-progress work and dismissed, because the failure looks nothing like its cause. `type-check` now builds `shared` first, which is the only order in which checking a dependent means anything.
 
 Found by the third session, which diagnosed its own red tree rather than leaving it to be misread.
+
+### Continuous integration
+
+There was none. Every check this repository has — 430 tests, the type checker, the linter, two production builds — ran only when somebody remembered to run them, in a week where local checks repeatedly passed on code that was broken.
+
+`.github/workflows/ci.yml` runs all of it on every push, in four jobs rather than one script: a lint failure and a failing end-to-end match are different problems, and learning about both at once beats learning about the first one faster.
+
+Two assertions in it are about things that already went wrong once:
+
+- **no test code in `server/dist`** — the previous exclusion was written against filenames, and the harnesses were named their way past it
+- **no `/design` route in a production build** — the bug that replaced was a dev route that existed and answered 200 with a not-found page
+
+Both were checked by deliberately creating the bad state and confirming the assertion fires, because this project has produced three tests that passed while asserting nothing.
+
+The image job is where two admissions in `DEPLOYMENT.md` stop being admissions. The container had never been built, because there was no Docker daemon where it was written; CI builds it. `SIGTERM` had never been exercised, because Windows does not deliver POSIX signals; CI sends one via `docker stop` and fails if the container needs the full timeout or if `shutting down` never reaches the logs. That check matters more than it looks: live matches are held in memory, so a container that ignores `SIGTERM` drops them on every deploy instead of draining them.

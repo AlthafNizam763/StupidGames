@@ -6,7 +6,9 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASES 1–23 of 28 complete.** The game is playable end to end: accounts, rooms, a live lobby, and a full match — roles, movement, objectives, sabotage, elimination, councils, voting, win conditions, reconnection, XP, leaderboard and friends. Remaining: voice chat (24), security hardening (25), the test and performance passes (26–27) and deployment (28). Screens are being built in parallel by a second session. `PHASES.md` tracks what is done and what is next.
+> **Status: all 28 phases complete.** The game is playable end to end — accounts, rooms, a live lobby, and a full match: roles, movement, objectives, sabotage, elimination, councils, voting, win conditions, reconnection, XP, leaderboard, friends and optional voice. 430 tests run on every push. `PHASES.md` records what each phase built and what building it found.
+>
+> Not yet done: no deployment has actually been performed. The container image, the environment contract and the CI pipeline exist and are exercised, but nothing here has met a real load balancer, a real Atlas network rule or a real TLS terminator. `DEPLOYMENT.md` has a Verification section listing exactly what has been run and what has not.
 
 ## Requirements
 
@@ -41,9 +43,10 @@ Run from the repository root.
 | -------------------- | ------------ |
 | `npm run dev`        | Starts the server and the web client together |
 | `npm run build`      | Builds `shared` first, then every workspace that has a build |
-| `npm run type-check` | Type-checks every workspace |
+| `npm run type-check` | Builds `shared`, then type-checks every workspace |
 | `npm run lint`       | Lints every workspace |
 | `npm test`           | Runs every workspace's tests |
+| `docker compose up`  | The server and MongoDB, for work against a real stack |
 | `npm run clean`      | Removes build output |
 
 All scripts are cross-platform; the project is developed on Windows and deployed on Linux, so no script may depend on a POSIX-only shell.

@@ -1,0 +1,194 @@
+name: CI
+
+# Every check this repository has, run on every push and pull request.
+#
+# Without this, the 430 tests, the type checker and the linter only run when
+# somebody remembers to run them - and this project has spent a week finding
+# bugs that every local check passed. A guard nobody runs is not a guard.
+#
+# The jobs are deliberately separate rather than one long script. A lint
+# failure and a failing end-to-end match are different problems, and finding
+# out about both at once is worth more than finding out about the first one
+# faster.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# A new push supersedes an in-flight run of the same branch. The old result is
+# about code nobody is going to ship.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Compiled into the client bundle at build time, so the build fails without
+  # them. These are the CI placeholders, never a deployment's real values.
+  NEXT_PUBLIC_API_URL: http://localhost:4000
+  NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+
+jobs:
+  check:
+    name: Types and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # `type-check` builds `shared` first. That is not incidental: `server`
+      # and `web` resolve `@voidline/shared` to `shared/dist`, so checking them
+      # against an unbuilt or stale one reports every import as a missing
+      # module and reads as a broken repository rather than an owed build.
+      - run: npm run type-check
+
+      - run: npm run lint
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build:shared
+
+      # The end-to-end suites download a real mongod on first use. Cached
+      # because it is tens of megabytes and identical between runs; without
+      # this every run pays for it again.
+      - name: Cache the mongodb binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-${{ runner.os }}
+
+      # Unit and end-to-end together. The e2e suites start a real MongoDB, a
+      # real Express app and a real Socket.IO server in-process, and they are
+      # the only thing here that has ever caught a bug at a seam between two
+      # components that were each individually correct.
+      - run: npm test -w @voidline/server
+
+      - run: npm test -w @voidline/web
+
+  build:
+    name: Production builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # The artefact must not contain test code. `tsconfig.build.json` excludes
+      # `src/test`, and this asserts it rather than trusting it: the previous
+      # exclusion was written against filenames and the harnesses were named
+      # their way past it, shipping a module that imports a devDependency.
+      - name: Assert no test code in the server artefact
+        run: |
+          if find server/dist -path '*test*' -name '*.js' | grep -q .; then
+            echo "test code found in server/dist:"
+            find server/dist -path '*test*' -name '*.js'
+            exit 1
+          fi
+
+      # The development-only design routes must not exist in a production
+      # build. They are `page.dev.tsx` and `pageExtensions` excludes that
+      # suffix outside development - but the bug this replaced was a route that
+      # existed and answered 200 with a not-found page, so the absence is
+      # checked rather than assumed.
+      - name: Assert the dev-only routes are absent
+        run: |
+          if find web/.next/server/app -type d -name design | grep -q .; then
+            echo "the /design routes were emitted into a production build"
+            exit 1
+          fi
+
+  image:
+    name: Server image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image had never been built when it was written - there was no
+      # Docker daemon in the environment it was authored in, and DEPLOYMENT.md
+      # says so. This is where that stops being true.
+      - name: Build the server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: false
+          load: true
+          tags: voidline-server:ci
+
+      # Building proves it compiles. Running proves node is PID 1, the shared
+      # workspace symlink resolves, and the process serves - which is the part
+      # a Dockerfile most easily gets wrong while still building cleanly.
+      - name: Boot it and check health
+        run: |
+          docker run -d --name voidline-ci \
+            -e NODE_ENV=production \
+            -e PORT=4000 \
+            -e MONGODB_URI=mongodb://127.0.0.1:27017/voidline \
+            -e CORS_ORIGINS=http://localhost:3000 \
+            -e JWT_SECRET=$(head -c 32 /dev/urandom | base64) \
+            -e JWT_REFRESH_SECRET=$(head -c 32 /dev/urandom | base64) \
+            -p 4000:4000 voidline-server:ci
+
+          # It serves while the database is still connecting, on purpose: a
+          # liveness probe that failed on a slow database restart would have
+          # the platform kill a server that was about to recover. So no
+          # MongoDB is started here - /health must answer regardless.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/health; then
+              echo && echo "healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "server did not become healthy"
+          docker logs voidline-ci
+          exit 1
+
+      # SIGTERM could not be exercised where this was written, because Windows
+      # does not deliver POSIX signals. Here it can be. `docker stop` sends
+      # SIGTERM and waits, so a container that needs the full timeout has not
+      # shut down gracefully - which would mean live matches dropped rather
+      # than drained on every deploy.
+      - name: Check it shuts down gracefully on SIGTERM
+        run: |
+          start=$(date +%s)
+          docker stop -t 30 voidline-ci
+          elapsed=$(( $(date +%s) - start ))
+
+          echo "stopped in ${elapsed}s"
+          docker logs voidline-ci 2>&1 | tail -20
+
+          if [ "$elapsed" -ge 25 ]; then
+            echo "container did not exit on SIGTERM - it was killed on timeout"
+            exit 1
+          fi
+
+          if ! docker logs voidline-ci 2>&1 | grep -q "shutting down"; then
+            echo "no graceful shutdown in the logs - SIGTERM never reached node"
+            exit 1
+          fi
