@@ -9,8 +9,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 3 | Node.js backend foundation | **done** |
 | 4 | Authentication | **done** |
 | 5 | Home / Profile / Settings | **done** |
-| 6 | Room creation and joining | next |
-| 7 | Lobby | |
+| 6 | Room creation and joining | **done** |
+| 7 | Lobby | next |
 | 8 | Socket.IO architecture | |
 | 9 | Canvas game engine | |
 | 10 | Map + collision | |
@@ -190,3 +190,36 @@ The three account screens (§10, §33, §37), plus the avatar system.
 **Home shows unbuilt destinations as disabled tiles marked "Soon".** §10 specifies the full set of destinations, and a tile that navigates to a 404 is worse than one that says it is not ready yet. PLAY stays visually dominant as the primary CTA but is disabled until rooms exist.
 
 **i18n is scaffolding, and says so.** The locale preference and the lookup are real and exercised end to end by the settings screen. The rest of the app still holds English literals — extracting them is a mechanical pass, and doing it half-way would leave a codebase where some text translates and some does not.
+
+## Phase 6 — what was built
+
+Rooms: creating them, finding them, previewing them.
+
+**Server**
+- `RoomManager`: the in-memory room registry, with cryptographically random codes over the unambiguous alphabet, a code index for lookup, phase transitions checked against the shared state machine, and an idle reaper.
+- `roomService`: create, preview, join check, lobby state, settings update, close — each with its own authorisation and phase rules.
+- `POST /api/rooms`, `POST /api/rooms/join`, `GET /api/rooms/code/:code`, `GET /api/rooms/:id`, `PATCH /api/rooms/:id`, `DELETE /api/rooms/:id`.
+
+**Client**
+- Create room screen covering every option in §11, with live validation from the shared validator.
+- Join room screen with the two-step look-up-then-confirm flow and a distinct message for each failure state in §12.
+- A lobby page showing the real room, explicitly labelled as not yet live.
+- A `Stepper` control for discrete settings.
+
+**Verification**: 31 new server tests (97 total) and a 39-check end-to-end pass over real HTTP.
+
+## Decisions made in Phase 6
+
+**`POST /api/rooms/join` is a check, not a commitment.** It answers "may I join this?" and returns the preview. Taking the seat happens over the socket, because membership is live state the server has to be able to revoke when the connection drops — a REST call cannot tell the room when the player goes away. This is the design SOCKET_EVENTS.md committed to in Phase 1, and Phase 8 completes it.
+
+**A preview never includes the roster.** Six characters is a weak secret and codes are enumerable in bulk. Anyone who guesses one learns that a room exists, its host and its occupancy — not who is sitting in it.
+
+**The host starts as `DISCONNECTED`.** Creating a room over REST does not open a socket. Marking them connected before their socket exists would show a phantom player and make the idle reaper think the room is occupied.
+
+**Settings updates re-validate the merged result.** Lowering `maxPlayers` from 10 to 5 can make an already-stored `saboteurCount` of 3 illegal; validating only the changed field would miss it. There is a test for exactly that.
+
+**The occupancy check runs before settings validation.** Shrinking a 10-player room to 4 breaks both the occupancy rule and saboteur parity. Both errors are true, but "at most 1 Saboteur for 4 players" is not what to tell a host whose real problem is that six people are already sitting there.
+
+**One room per host, with a caveat.** Creating a second room closes the first when it is empty — an abandoned lobby from a closed tab should not linger. When other players are still in it, the request is refused instead, because closing it would eject them without warning.
+
+**Rooms are reaped when idle.** Without a sweep, every abandoned lobby stays in memory until the process restarts. Rooms with nobody connected are closed after the teardown delay; a room with any connected member is never touched.

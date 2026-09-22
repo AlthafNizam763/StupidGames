@@ -6,7 +6,7 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASE 5 of 28 complete.** Accounts, home, profile and settings all work against the real server. Rooms, lobbies and the game itself are Phases 6 onward, so the home screen marks those destinations as not yet available. `PHASES.md` tracks what is done and what is next.
+> **Status: PHASE 6 of 28 complete.** Accounts, home, profile, settings and room creation/joining all work against the real server. The lobby is not live yet — seats are taken over a socket, and the realtime layer arrives in Phases 7–8. `PHASES.md` tracks what is done and what is next.
 
 ## Requirements
 

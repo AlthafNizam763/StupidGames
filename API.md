@@ -61,14 +61,24 @@ Production responses never include a stack trace.
 
 ### Rooms
 
+All room routes require a session.
+
 | Method | Path | Body | Returns |
 | ------ | ---- | ---- | ------- |
-| `POST` | `/api/rooms` | `CreateRoomInput` | `RoomState` |
-| `POST` | `/api/rooms/join` | `{ code }` | `RoomSummary` |
-| `GET`  | `/api/rooms/:code` | — | `RoomSummary` |
+| `POST` | `/api/rooms` | `CreateRoomInput` | `RoomState` — caller becomes host |
+| `POST` | `/api/rooms/join` | `{ code }` | `RoomSummary` — *may I join?*, not *I have joined* |
+| `GET`  | `/api/rooms/code/:code` | — | `RoomSummary` |
+| `GET`  | `/api/rooms/:id` | — | `RoomState` — members only |
+| `PATCH` | `/api/rooms/:id` | `Partial<RoomSettings>` | `RoomState` — host only, lobby only |
 | `DELETE` | `/api/rooms/:id` | — | `null` — host only |
 
-REST room endpoints exist so the join screen can preview a room before opening a socket. `GET /api/rooms/:code` returns a `RoomSummary`, deliberately thinner than `RoomState`: someone who has not joined sees the host, the map, the mode and a player count, not the full roster. Actually entering a room happens over the socket.
+REST room endpoints exist so the join screen can preview a room before opening a socket. Preview and join both return a `RoomSummary`, deliberately thinner than `RoomState`: someone who has not joined sees the host, the map, the mode and a player count, **never the roster**. A six-character code is a weak secret, and an endpoint that hands over a player list to anyone who guesses one is a way to find out who is playing with whom.
+
+`POST /api/rooms/join` answers whether the caller *could* take a seat and returns what to show on the confirmation screen. It does not add them to the room. Membership is live state the server must be able to revoke when a connection drops, so a seat is taken over the socket — see [SOCKET_EVENTS.md](SOCKET_EVENTS.md).
+
+A settings update re-validates the **merged** result, not just the changed field: lowering `maxPlayers` from 10 to 5 can make an already-stored `saboteurCount` of 3 illegal.
+
+Rooms are held in memory, not MongoDB — see [DATABASE.md](DATABASE.md) for why, and what that costs.
 
 ### Leaderboard and matches
 

@@ -52,14 +52,14 @@ const DESTINATIONS: Destination[] = [
     key: 'create',
     label: 'Create room',
     description: 'Host a match',
-    href: null,
+    href: ROUTES.createRoom,
     icon: <Icon path="M12 5v14M5 12h14" />,
   },
   {
     key: 'join',
     label: 'Join room',
     description: 'Enter a code',
-    href: null,
+    href: ROUTES.joinRoom,
     icon: <Icon path="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />,
   },
   {
@@ -215,11 +215,18 @@ export function HomeScreen() {
          * pointed at a route that does not exist.
          */}
         <section>
+          {/*
+           * PLAY means quick match - dropped into a room with strangers - which
+           * needs matchmaking, not just rooms. Creating and joining by code
+           * both work now, so the copy points at those rather than leaving the
+           * player with nothing to do.
+           */}
           <Button size="lg" fullWidth disabled className="h-16 text-lg tracking-[0.15em]">
             PLAY
           </Button>
           <p className="mt-2 text-center text-sm text-ink-faint">
-            Matchmaking opens when rooms land in the next phase.
+            Quick match needs matchmaking, which is still to come. Create a room or join one with
+            a code below.
           </p>
         </section>
 

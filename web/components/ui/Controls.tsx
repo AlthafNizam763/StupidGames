@@ -220,3 +220,76 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
     </section>
   );
 }
+
+/* -------------------------------------------------------------- stepper - */
+
+/**
+ * A numeric stepper: minus, value, plus.
+ *
+ * Preferred over a slider for the room settings because these are discrete
+ * values a host wants to set exactly - "7 objectives", not "somewhere around
+ * 7" - and because two 44px buttons are far easier to hit on a phone than a
+ * thumb dragged along a 200px track.
+ */
+export function Stepper({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  /** Unit shown after the number, e.g. "s". */
+  suffix?: string;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-void-600 bg-void-850 p-1">
+      <button
+        type="button"
+        aria-label={`Decrease ${label}`}
+        disabled={disabled || value <= min}
+        onClick={() => onChange(clamp(value - step))}
+        className="touch-target grid place-items-center rounded-lg text-lg text-ink-muted transition-colors hover:bg-void-700 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+      >
+        <span aria-hidden>−</span>
+      </button>
+
+      {/*
+       * The value is a live region rather than an input: typing a number into
+       * a field that must stay inside a range means handling every partial
+       * state ("", "-", "12345") on the way. Two buttons cannot produce one.
+       */}
+      <output
+        id={id}
+        aria-label={label}
+        className="min-w-14 text-center font-mono text-[0.9375rem] text-ink tabular-nums"
+      >
+        {value}
+        {suffix}
+      </output>
+
+      <button
+        type="button"
+        aria-label={`Increase ${label}`}
+        disabled={disabled || value >= max}
+        onClick={() => onChange(clamp(value + step))}
+        className="touch-target grid place-items-center rounded-lg text-lg text-ink-muted transition-colors hover:bg-void-700 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+      >
+        <span aria-hidden>+</span>
+      </button>
+    </div>
+  );
+}
