@@ -322,12 +322,18 @@ export class MatchManager {
     const result = tallyVotes(match);
     closeMeeting(match);
 
+    /*
+     * Stored BEFORE the event fires.
+     *
+     * `onMeetingResolved` is what broadcasts the tally, and it reads it from
+     * here. Setting it afterwards meant the broadcast found nothing and every
+     * client learned the outcome only by inference from the next snapshot -
+     * the ejection screen had no result to show.
+     */
+    lastVotingResults.set(match.id, result);
+
     this.toPhase(match, GamePhase.EJECTION, EJECTION_DURATION_MS, now);
     this.events.onMeetingResolved(match);
-
-    // Stored on the match so the socket layer can send it with the phase
-    // change, rather than needing to recompute a tally that has side effects.
-    lastVotingResults.set(match.id, result);
   }
 
   /* ---------------------------------------------------------- outcome - */

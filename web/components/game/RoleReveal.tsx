@@ -75,21 +75,25 @@ export function RoleReveal({
   const identity = roleIdentity(role);
   const reducedMotion = useReducedMotion();
 
-  const [stage, setStage] = useState<Stage>(reducedMotion ? 'REVEALED' : 'HUMAN');
+  const [timedStage, setTimedStage] = useState<Stage>('HUMAN');
+
+  /*
+   * A player who asked for reduced motion gets the answer immediately.
+   * Skipping the animation but keeping the three-second wait would honour the
+   * letter of the setting and none of the point of it.
+   *
+   * Derived rather than pushed into state: `useReducedMotion` resolves after
+   * mount, so setting state from an effect would mean an extra render pass
+   * and a frame of the animated variant. This has neither.
+   */
+  const stage: Stage = reducedMotion ? 'REVEALED' : timedStage;
 
   useEffect(() => {
-    /*
-     * A player who asked for reduced motion gets the answer immediately.
-     * Skipping the animation but keeping the three-second wait would honour
-     * the letter of the setting and none of the point of it.
-     */
-    if (reducedMotion) {
-      setStage('REVEALED');
-      return;
-    }
+    if (reducedMotion) return;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const at = (delay: number, next: Stage) => timers.push(setTimeout(() => setStage(next), delay));
+    const at = (delay: number, next: Stage) =>
+      timers.push(setTimeout(() => setTimedStage(next), delay));
 
     if (isCat) {
       at(BEATS.human, 'SHADOW');

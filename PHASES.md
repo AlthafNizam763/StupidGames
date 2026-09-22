@@ -14,20 +14,20 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 8 | Socket.IO architecture | **done** |
 | 9 | Canvas game engine | **done** |
 | 10 | Map + collision | **done** |
-| 11 | Player movement | next |
-| 12 | Role system | |
-| 13 | Objectives | |
-| 14 | Sabotage | |
-| 15 | Elimination | |
-| 16 | Body reporting | |
-| 17 | Council | |
-| 18 | Voting | |
-| 19 | Win conditions | |
-| 20 | Reconnection | |
-| 21 | Results + XP | |
-| 22 | Leaderboard | |
-| 23 | Friends / social | |
-| 24 | Voice chat | |
+| 11 | Player movement | **done** |
+| 12 | Role system | **done** |
+| 13 | Objectives | **done** |
+| 14 | Sabotage | **done** |
+| 15 | Elimination | **done** |
+| 16 | Body reporting | **done** |
+| 17 | Council | **done** |
+| 18 | Voting | **done** |
+| 19 | Win conditions | **done** |
+| 20 | Reconnection | **done** |
+| 21 | Results + XP | **done** |
+| 22 | Leaderboard | **done** |
+| 23 | Friends / social | **done** |
+| 24 | Voice chat | next |
 | 25 | Anti-cheat / security hardening | |
 | 26 | Testing | |
 | 27 | Performance optimization | |
@@ -362,3 +362,39 @@ Both are worth recording, because both were tests that passed while proving noth
 **The doorway counter was vacuously passing.** It reported 22 openings for a two-door room: probes from different sides were interleaved, so the open/closed flag flip-flopped between unrelated walls and every alternation counted as a doorway. `>= 2` passed regardless. Fixed by walking each side separately, asserting the *exact* authored count, and adding a self-check that the counter can tell a sealed wall from an open one.
 
 **The spatial grid's cell key was not injective.** `row * columns + column` makes `key(-1, row)` collide with `key(columns-1, row-1)`, so a query just off the left edge could return walls from the right edge of the row above. It produced false positives rather than misses, so collision stayed correct — but the test that was supposed to catch it passed by luck on the values chosen. Indices are now clamped into range, with a test for the specific aliasing case.
+
+## Phases 11–23 — what was built
+
+The game itself. Server mechanism and client transport; screens belong to the UI session under the agreed split.
+
+**Managers, one rule surface each**: `RoleManager`, `MovementManager`, `TaskManager`, `SabotageManager`, `KillManager`, `MeetingManager`, `WinConditionManager`. All framework-free — no Socket.IO, no Mongoose — so every rule is testable without standing up a server. `MatchManager` runs one interval per match and owns the phase machine.
+
+**`serialise.ts` is the secrecy boundary.** Every rule about what a player may not learn is enforced by building a payload that does not contain it. `PublicPlayerState` has no role, no task list, no cooldowns; `zone` is omitted entirely during a comms blackout rather than sent with a flag.
+
+**Persistence**: `Match` documents written once at match end, with XP, stats and achievements computed from server state. No endpoint or event accepts an XP value.
+
+**Verification**: 275 server tests, plus a 39-check end-to-end pass in which four real socket clients play a complete match — roles dealt, authority refusals, movement, emergency council, chat, voting, ejection, win condition, XP, history and leaderboard.
+
+## Decisions made in Phases 11–23
+
+**Clients send direction, servers integrate it.** The anti-cheat for movement is structural, not detective: a payload with no coordinate in it cannot carry a forged one. Verified end to end — a client sending a direction vector of length 500 travels no further than one sending length 1.
+
+**Nothing names the killer.** Not the outcome, not the body, not any broadcast. Working out who did it is the entire game. There is a test that serialises the elimination result and asserts the killer's id does not appear in it.
+
+**A Saboteur is refused an objective with the same error an Operator gets for someone else's task.** A distinct error would be a second confirmation of their own role. The same reasoning refuses eliminating a fellow Saboteur with the generic `TARGET_INVALID` — a specific error would let them probe who their allies are.
+
+**Dead chat is enforced at fan-out.** The recipient list is computed server-side; a living socket is never *sent* a dead-channel message, so no client bug or patched bundle can reveal one.
+
+**Anonymous votes omit the target; unconfirmed ejections omit the role.** Absent from the payload, not present and hidden.
+
+**An expired critical sabotage beats a completed objective bar.** They can land on the same tick, and the station was already lost when the countdown hit zero.
+
+**Puzzle honesty.** SELECT puzzles hold their answer server-side and cannot be forged. ALIGN puzzles necessarily show their target — the challenge is doing it, not knowing it — so they get a minimum plausible solve time instead, measured against the server's own issue time. The shared puzzle docs say exactly this rather than implying more.
+
+## Three bugs found by tests this phase
+
+**Win conditions treated `RECONNECTING` as absent.** A player whose connection dropped handed the other side a `TEAM_ABANDONED` win — losing a match because someone's train went through a tunnel. Only `DISCONNECTED`, set when the grace period expires, now means gone.
+
+**The voting result was stored after the event that broadcasts it.** `resolveVoting` called `onMeetingResolved` and *then* recorded the tally, so the broadcast found nothing and clients could only infer the outcome from the next snapshot. Caught by the socket end-to-end run, not by the unit tests — the unit tests called `tallyVotes` directly and never exercised the ordering.
+
+**Two of my own test bugs, both worth noting** because both looked like product failures: a movement assertion that read positions out of `game:state` (which is event-driven) instead of `game:delta` (which carries motion), and a wall test that placed the player inside a doorway and then asserted they could not walk through it.

@@ -6,7 +6,7 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASE 9 of 28 complete.** Accounts, rooms and a live multiplayer lobby work end to end. The Canvas engine runs — fixed-timestep simulation, collision, camera, keyboard and joystick — against a placeholder arena with the local player only. The ORBITAL-09 map is Phase 10, networked movement Phase 11, roles Phase 12. Phase 8 is complete: the Redis adapter and room directory are in place, and every socket payload is validated. `PHASES.md` tracks what is done and what is next.
+> **Status: PHASES 1–23 of 28 complete.** The game is playable end to end: accounts, rooms, a live lobby, and a full match — roles, movement, objectives, sabotage, elimination, councils, voting, win conditions, reconnection, XP, leaderboard and friends. Remaining: voice chat (24), security hardening (25), the test and performance passes (26–27) and deployment (28). Screens are being built in parallel by a second session. `PHASES.md` tracks what is done and what is next.
 
 ## Requirements
 

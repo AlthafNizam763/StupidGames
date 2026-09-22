@@ -70,6 +70,44 @@ export function HumanCharacter({
   animated = false,
   className,
 }: HumanCharacterProps) {
+  return (
+    <svg
+      viewBox="0 0 100 140"
+      className={cn('block size-24 shrink-0 overflow-visible', className)}
+      role={name ? 'img' : undefined}
+      aria-label={name ?? undefined}
+      aria-hidden={name ? undefined : true}
+    >
+      <CharacterFigure
+        appearance={appearance}
+        avatarId={avatarId}
+        expression={expression}
+        pose={pose}
+        animated={animated}
+      />
+    </svg>
+  );
+}
+
+/**
+ * The figure itself, with no `<svg>` around it.
+ *
+ * Exported so a caller can put it in its own viewBox and crop to part of the
+ * frame - which is what the customisation swatches do, showing a head for a
+ * hairstyle and a torso for a uniform. Scaling the whole character down into
+ * a 40px chip instead would make the thing being chosen about four pixels
+ * tall.
+ *
+ * The frame is always 0 0 100 140 in the parent's coordinates; crop by
+ * setting the parent's viewBox, never by transforming this.
+ */
+export function CharacterFigure({
+  appearance,
+  avatarId,
+  expression = 'NORMAL',
+  pose = 'IDLE',
+  animated = false,
+}: Omit<HumanCharacterProps, 'name' | 'className'>) {
   const skin = skinPaint(appearance.skin);
   const hair = hairPaint(appearance.hairColour);
   const uniform = uniformColour(avatarId);
@@ -79,13 +117,7 @@ export function HumanCharacter({
   const shoulder = girl ? 33 : 30;
 
   return (
-    <svg
-      viewBox="0 0 100 140"
-      className={cn('block size-24 shrink-0 overflow-visible', className)}
-      role={name ? 'img' : undefined}
-      aria-label={name ?? undefined}
-      aria-hidden={name ? undefined : true}
-    >
+    <>
       {/*
        * The whole figure breathes as one group. Animating the head separately
        * from the body is how a character starts to look like a puppet with a
@@ -128,7 +160,7 @@ export function HumanCharacter({
         <FrontHair appearance={appearance} hair={hair} />
         <Accessory appearance={appearance} uniform={uniform} />
       </g>
-    </svg>
+    </>
   );
 }
 
@@ -551,40 +583,53 @@ function Backpack({
   uniform: string;
 }) {
   switch (appearance.backpack) {
+    /*
+     * Every pack is drawn WIDER than the torso it sits behind.
+     *
+     * The torso spans x=30..70 and the arms cover to about x=23 and x=77, so
+     * a pack that fits inside those is a pack nobody can see - which is what
+     * the first version of this did, leaving three of the four looking
+     * identical. Each one now shows a distinct profile past the shoulders,
+     * and a silhouette above them where it can.
+     */
     case 'pack-standard':
       return (
-        <g>
-          <rect x="24" y="76" width="52" height="28" rx="8" fill="#00000055" />
-          <rect x="30" y="82" width="40" height="8" rx="3" fill={uniform} opacity="0.5" />
+        <g stroke={OUTLINE} strokeWidth="1.5" strokeLinejoin="round">
+          <rect x="19" y="74" width="62" height="30" rx="10" fill="#323C52" />
+          <rect x="26" y="80" width="48" height="7" rx="3" fill={uniform} opacity="0.55" />
         </g>
       );
 
     case 'pack-tool':
       return (
-        <g>
-          <rect x="24" y="78" width="52" height="26" rx="7" fill="#00000055" />
-          {/* Handles over the shoulder line. */}
-          <rect x="28" y="66" width="5" height="16" rx="2.5" fill="#FFC15E" />
-          <rect x="36" y="62" width="5" height="20" rx="2.5" fill="#9AA3B2" />
+        <g stroke={OUTLINE} strokeWidth="1.5" strokeLinejoin="round">
+          <rect x="19" y="78" width="62" height="26" rx="5" fill="#3A3324" />
+          {/* Handles over the shoulder line: the one pack with a skyline. */}
+          <rect x="22" y="60" width="6" height="22" rx="3" fill="#FFC15E" />
+          <rect x="31" y="55" width="6" height="27" rx="3" fill="#9AA3B2" />
+          <rect x="72" y="63" width="6" height="19" rx="3" fill="#B4552C" />
         </g>
       );
 
     case 'pack-oxygen':
       return (
-        <g>
-          <rect x="28" y="72" width="14" height="34" rx="7" fill="#4A5468" />
-          <rect x="58" y="72" width="14" height="34" rx="7" fill="#4A5468" />
-          <rect x="31" y="76" width="8" height="4" rx="2" fill="#E8EDF7" opacity="0.4" />
-          <rect x="61" y="76" width="8" height="4" rx="2" fill="#E8EDF7" opacity="0.4" />
+        <g stroke={OUTLINE} strokeWidth="1.5" strokeLinejoin="round">
+          {/* Two cylinders, clear of the torso on both sides. */}
+          <rect x="17" y="68" width="16" height="40" rx="8" fill="#5A6580" />
+          <rect x="67" y="68" width="16" height="40" rx="8" fill="#5A6580" />
+          <rect x="20" y="73" width="10" height="4" rx="2" fill="#E8EDF7" opacity="0.5" />
+          <rect x="70" y="73" width="10" height="4" rx="2" fill="#E8EDF7" opacity="0.5" />
+          <path d="M33 78h34" stroke="#5A6580" strokeWidth="5" strokeLinecap="round" />
         </g>
       );
 
     case 'pack-science':
       return (
-        <g>
-          {/* Boxy, hard-edged: the one pack with corners. */}
-          <rect x="26" y="78" width="48" height="26" rx="3" fill="#00000055" />
-          <rect x="26" y="88" width="48" height="3" fill="#6FA8FF" opacity="0.6" />
+        <g stroke={OUTLINE} strokeWidth="1.5" strokeLinejoin="round">
+          {/* Boxy and hard-edged: the only pack with corners. */}
+          <rect x="18" y="72" width="64" height="34" rx="2" fill="#2C3A52" />
+          <rect x="18" y="84" width="64" height="4" fill="#6FA8FF" opacity="0.75" />
+          <rect x="44" y="72" width="12" height="6" rx="1" fill="#6FA8FF" opacity="0.5" />
         </g>
       );
 
