@@ -1,0 +1,48 @@
+# Keeps the build context small and, more importantly, keeps secrets and host
+# build artefacts out of the image.
+#
+# `.env` is the line that matters. It is gitignored, so it will not reach a
+# registry through the repository - but `docker build .` reads the working
+# directory, not git, and would copy a developer's real credentials into a
+# layer that survives being deleted in a later one.
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+
+node_modules
+**/node_modules
+
+# Host builds. These are rebuilt inside the image, and copying a Windows or
+# macOS build in would either be overwritten or, worse, quietly used.
+dist
+**/dist
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+coverage
+**/coverage
+
+# The client is not part of the server image. Its manifest is copied explicitly
+# by the Dockerfile because npm validates the lockfile against every workspace.
+web/app
+web/components
+web/game
+web/hooks
+web/lib
+web/public
+web/services
+web/stores
+
+*.log
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+.vercel
+.turbo

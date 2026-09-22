@@ -1,0 +1,66 @@
+# The server and its dependencies, for local work against a real stack.
+#
+#   cp .env.example .env    # then set the two JWT secrets
+#   docker compose up --build
+#
+# This runs the SERVER only. The web client is developed with `npm run dev -w
+# @voidline/web` against it, because a Next dev server in a container loses hot
+# reload for no benefit - and in production the client is a static deployment on
+# a different platform entirely (DEPLOYMENT.md).
+#
+# Redis is included but not required. With one instance the server runs with
+# in-memory rooms and says so at startup; the profile below exists so scale-out
+# behaviour - the Socket.IO adapter and the room directory - can be exercised
+# locally rather than discovered in production.
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # The server tolerates a database that is not up yet and retries, but
+      # starting in order makes a failed run easier to read.
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  server:
+    build:
+      # The repository root: the image needs the shared workspace.
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '${PORT:-4000}:${PORT:-4000}'
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-4000}
+      # `mongo` is the service name on the compose network, not localhost -
+      # inside a container localhost is the container.
+      MONGODB_URI: mongodb://mongo:27017/voidline
+      # Must list the client's origin exactly. Getting this wrong is the most
+      # common cause of "it works locally but the socket will not connect".
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # No defaults. The server refuses to start without them, which is the
+      # intended behaviour - a development fallback secret is a secret that
+      # eventually ships.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # Started only with: docker compose --profile cluster up
+  redis:
+    image: redis:7-alpine
+    profiles: [cluster]
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+
+volumes:
+  mongo-data:

@@ -31,7 +31,7 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 25 | Anti-cheat / security hardening | **done** |
 | 26 | Testing | **done** |
 | 27 | Performance optimization | **done** |
-| 28 | Production deployment | next |
+| 28 | Production deployment | **done** |
 
 ## Phase 1 — what was built
 
@@ -553,3 +553,41 @@ There are none. No `web/public` directory, and not a single raster file in the c
 The e2e harness picked its port from a module-level counter. `node:test` runs test *files* in separate processes, so the counter coordinated nothing: both suites started it at the same number and raced for the same port, and the suite failed about one run in three when run together while passing alone. It now binds port 0 and asks the OS what it got. Verified with five consecutive clean runs.
 
 A suite that fails intermittently is worse than no suite, because the habit it teaches is to re-run it until it is green.
+
+## Phase 28 — production deployment
+
+Split with the UI session: server, container, environment and deploy documentation here; the web build and headers there.
+
+### What was found by running it
+
+**The documented start command did not work.** `DEPLOYMENT.md` said `node server/dist/app.js`. The entry point is `index.js` — `app.ts` exports `createApp` and never listens — so the documented command started a process that bound no port and exited. It had been wrong since the document was written, because nothing reads a deployment guide except somebody doing a deployment, and nobody had.
+
+**The test harnesses were shipping to production.** `tsconfig.build.json` excluded `src/**/*.test.ts`, but the harnesses are named `harness.ts` and `dbHarness.ts`, so they compiled into `dist/test/` and went into the artefact. `e2e/harness.ts` imports `mongodb-memory-server`, a devDependency absent from any image built with `--omit=dev`. Nothing required it at runtime, so it was dead weight rather than a crash — but a production artefact should not contain a module that throws if anything ever does require it. The whole `src/test` tree is now excluded, rather than more filename patterns, so the next harness cannot be named its way back in.
+
+That is the same shape as the `/design` routes reaching production: an exclusion written against how things were named at the time, rather than against what they are.
+
+### The container
+
+`server/Dockerfile`, built from the repository root because the server needs the `shared` workspace. Two stages: the build stage installs everything and compiles `shared` then `server`; the runtime stage installs only this workspace's production dependencies.
+
+`npm ci --omit=dev --workspace=@voidline/server --include-workspace-root` is the line the image depends on, and it was verified separately: 162 packages, with Next, React and the client's build chain correctly absent from a server image that will never render a page. npm links `@voidline/shared` as a symlink to `/app/shared`, which is why the runtime stage copies `shared/dist` and the workspace layout rather than only `server/dist` — without it the symlink dangles and the process dies on its first import.
+
+`CMD` is exec form so node is PID 1 and receives `SIGTERM` directly. Shell form would put `/bin/sh` at PID 1, which does not forward signals: the graceful shutdown would never run and every deploy would sit out the full termination grace period before being killed. With live matches held in memory, that is the difference between draining them and dropping them.
+
+`.dockerignore` excludes `.env`. It is gitignored, so it cannot reach a registry through the repository — but `docker build .` reads the working directory, not git, and would copy a developer's real credentials into a layer that survives being deleted in a later one.
+
+### What was not verified, and why it is written down
+
+There is no Docker daemon in this environment, so the image has never been built. Windows does not deliver POSIX signals, so the `SIGTERM` path could be read but not exercised. No platform account was configured, so nothing has met a real load balancer or a real Atlas network rule.
+
+All of this is stated in a Verification section in `DEPLOYMENT.md` rather than left to be discovered. A deployment guide is executed once, by somebody who cannot tell a tested instruction from a plausible-looking one, and this project has now been caught four times by exactly that gap — the CSP, the `/design` routes, the unsolvable puzzle, and the start command above.
+
+### A build that succeeded and produced nothing
+
+Found while verifying the above. `shared` is a composite TypeScript project, so `tsc` keeps a `tsconfig.tsbuildinfo` recording what it has already emitted. Delete `dist` and leave that file behind, and the next build compares against a manifest saying everything is current, emits nothing, and **exits zero**.
+
+The symptom is not a build failure. It is 307 type errors in the server, every one of them `Cannot find module '@voidline/shared'`, from a build that reported success.
+
+This is reachable from an ordinary `rm -rf dist`, and more importantly from a CI cache that restores `.tsbuildinfo` without restoring `dist` — which is a normal thing for a cache to do, since `dist` is usually gitignored and `.tsbuildinfo` is small. Both workspaces now have a `prebuild` that removes the two together, and the fix was verified by reproducing the exact failure first and confirming it no longer occurs.
+
+A build that succeeds while producing nothing is the worst available outcome, because every downstream check is then testing the previous artefact.

@@ -1,4 +1,18 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  /*
+   * Test code is not part of the artefact.
+   *
+   * Excluding `*.test.ts` alone was not enough: the harnesses are named
+   * `harness.ts` and `dbHarness.ts`, so they compiled into `dist/test/` and
+   * shipped. `e2e/harness.ts` imports `mongodb-memory-server`, a
+   * devDependency, which does not exist in an image built with
+   * `npm ci --omit=dev` - nothing requires it at runtime, so it was dead weight
+   * rather than a crash, but a production artefact should not contain a module
+   * that would throw if anything ever did require it.
+   *
+   * The whole `src/test` tree goes, rather than more filename patterns, so the
+   * next harness cannot be named its way back in.
+   */
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test"]
 }

@@ -1,6 +1,13 @@
 # Deployment
 
-Target topology and the constraints that shape it. **Implemented in Phase 28**; this document is the plan those phases build to.
+Target topology, the constraints that shape it, and what has actually been run.
+
+Everything under **Server** below was executed against the built artefact. The
+container image was not: there is no Docker daemon in the environment this was
+built in, so `server/Dockerfile` is reviewed but unbuilt. What that means in
+practice is in [Verification](#verification) at the end - it is stated rather
+than glossed, because this project has repeatedly been caught by documentation
+asserting something nobody ran.
 
 ## Topology
 
@@ -32,18 +39,36 @@ Build and run:
 
 ```bash
 npm ci
-npm run build          # shared, then server
-node server/dist/app.js
+npm run build -w @voidline/shared
+npm run build -w @voidline/server
+node server/dist/index.js
 ```
 
-Health check: `GET /health`.
+The entry point is `index.js`, not `app.js`. This document said `app.js` until
+somebody ran it: `app.ts` exports `createApp` and never listens, so the
+documented command started a process that bound no port and exited. It had been
+wrong since the file was written, because nothing reads a deployment document
+except a person doing a deployment.
+
+Or with Docker, from the repository root:
+
+```bash
+docker build -f server/Dockerfile -t voidline-server .
+docker compose up --build   # server + mongo, and redis under --profile cluster
+```
+
+Health check: `GET /health`. No auth, no envelope, and no database round-trip,
+so it answers while the database is still connecting - which is deliberate: a
+liveness probe that fails on a slow database restart would have the platform
+kill a server that was about to recover.
 
 Platform settings that matter:
 
 - **WebSocket support on.** Off, and Socket.IO silently degrades to polling — playable, but with latency that ruins a movement-based game.
 - **Sticky sessions on**, if the platform load-balances at all. Socket.IO's handshake spans multiple requests; without stickiness it fails intermittently and confusingly.
 - **Generous idle timeout.** A connection is held for a whole match.
-- **Graceful shutdown.** On `SIGTERM`, stop accepting new rooms, tell connected clients, drain, then exit. Killing a process mid-match loses that match — see [DATABASE.md](DATABASE.md) on why live state is in memory.
+- **Graceful shutdown.** Implemented in `server/src/index.ts`: on `SIGTERM` the sockets are closed after telling connected clients, this instance's rooms are released from the directory, then HTTP and the database, with a 10s hard timeout so a stuck connection cannot hold the process open. Killing a process mid-match loses that match — see [DATABASE.md](DATABASE.md) on why live state is in memory.
+- **The container must run node as PID 1.** `server/Dockerfile` uses the exec-form `CMD` for this. A shell-form `CMD` puts `/bin/sh` at PID 1, and it does not forward signals: the graceful shutdown above would never run, and every deploy would sit out the full termination grace period before being killed.
 
 ## Web
 
@@ -90,3 +115,42 @@ A provider needs credentials (`VOICE_API_KEY`, `VOICE_API_SECRET`, `VOICE_SERVER
 | `MONGODB_URI` connects locally, not in production | Atlas network access list missing the platform's egress IPs |
 | Rooms vanish after a deploy | Expected: live rooms are in memory. Deploy between matches, or drain on `SIGTERM` |
 | 401 on every request after ~15 minutes | Access token expired and the client is not refreshing — check the refresh cookie's `SameSite`/`Secure` flags across origins |
+
+## Verification
+
+What was actually run, and what was not. The distinction matters more here than
+elsewhere in these documents: a deployment guide is executed once, by somebody
+who cannot tell a tested instruction from a plausible one.
+
+**Run, and passing:**
+
+- `npm ci && npm run build` for `shared` then `server`, from clean.
+- `node server/dist/index.js` against a real MongoDB, with a production
+  `NODE_ENV`. It binds, connects, opens the socket namespace and answers
+  `GET /health` with `200`. This is what found the `app.js` error above.
+- `npm ci --omit=dev --workspace=@voidline/server --include-workspace-root`,
+  the install line the image depends on: 162 packages, with the client's
+  dependency tree correctly absent and `@voidline/shared` symlinked into
+  `node_modules`. That symlink is why the runtime stage copies `shared/dist`
+  and the workspace layout rather than only `server/dist`.
+- `next build` for the client: succeeds, 13 routes, no `/design` route present.
+
+**Not run:**
+
+- **`docker build`.** There is no Docker daemon available here, so the image is
+  written and reviewed but has never been built. Treat the first build as part
+  of deployment rather than as a formality. The install step inside it is the
+  part most likely to be wrong, and that is the one part verified separately
+  above.
+- **`SIGTERM` handling, end to end.** The handler is wired and the shutdown
+  sequence is implemented, but Windows does not deliver POSIX signals, so the
+  path could only be read rather than exercised. Worth confirming on the first
+  deploy: send a `SIGTERM` and check for `shutting down` followed by
+  `http server closed` in the logs before the process exits.
+- **A real platform deploy.** No account was configured, so nothing here has
+  met a real load balancer, a real Atlas network rule, or a real TLS
+  termination point.
+
+**Known cost:** the server image installs only its own workspace's production
+dependencies, but the build stage installs everything, including the client's.
+That is discarded with the stage and affects build time rather than image size.
