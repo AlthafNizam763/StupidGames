@@ -222,6 +222,7 @@ class RoomManagerImpl {
       // since they were last here.
       existing.username = player.username;
       existing.avatar = player.avatar;
+      existing.appearance = player.appearance;
       existing.level = player.level;
       this.touch(room);
       return existing;

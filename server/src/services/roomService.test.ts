@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, describe, it } from 'node:test';
 import {
   ConnectionState,
+  DEFAULT_APPEARANCE,
   DEFAULT_ROOM_SETTINGS,
   ErrorCode,
   GamePhase,
@@ -75,7 +76,7 @@ describe('roomService', { timeout: 120_000 }, () => {
 
       for (let i = 0; i < 40; i++) {
         const room = roomManager.create(
-          { userId: `u${i}`, username: `u${i}`, avatar: 'operator-01', level: 1 },
+          { userId: `u${i}`, username: `u${i}`, avatar: 'operator-01', appearance: DEFAULT_APPEARANCE, level: 1 },
           { ...DEFAULT_ROOM_SETTINGS, name: 'Room', map: 'ORBITAL_09', isPrivate: true },
         );
         codes.add(room.code);
@@ -144,6 +145,7 @@ describe('roomService', { timeout: 120_000 }, () => {
         userId: guest.id,
         username: guest.username,
         avatar: guest.avatar,
+        appearance: DEFAULT_APPEARANCE,
         level: guest.level,
         isHost: false,
         isReady: false,
@@ -228,6 +230,7 @@ describe('roomService', { timeout: 120_000 }, () => {
           userId: `filler-${i}`,
           username: `Filler${i}`,
           avatar: 'operator-01',
+          appearance: DEFAULT_APPEARANCE,
           level: 1,
           isHost: false,
           isReady: false,
@@ -263,6 +266,7 @@ describe('roomService', { timeout: 120_000 }, () => {
           userId: `filler-${i}`,
           username: `Filler${i}`,
           avatar: 'operator-01',
+          appearance: DEFAULT_APPEARANCE,
           level: 1,
           isHost: false,
           isReady: false,
@@ -346,6 +350,7 @@ describe('roomService', { timeout: 120_000 }, () => {
           userId: `filler-${i}`,
           username: `Filler${i}`,
           avatar: 'operator-01',
+          appearance: DEFAULT_APPEARANCE,
           level: 1,
           isHost: false,
           isReady: false,

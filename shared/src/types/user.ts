@@ -1,4 +1,5 @@
 import type { AchievementId } from '../constants/game';
+import type { CharacterAppearance } from '../constants/appearance';
 import type { ISODateString } from './common';
 
 export type UserId = string;
@@ -16,6 +17,14 @@ export interface PublicUser {
   avatar: AvatarId;
   level: number;
   xp: number;
+  /**
+   * How this player is drawn.
+   *
+   * Public on purpose, and the one field in this codebase whose secrecy runs
+   * the *opposite* way to roles: every client must be able to draw every
+   * player identically, or the Saboteur becomes the one nobody can render.
+   */
+  appearance: CharacterAppearance;
 }
 
 export interface UserStats {

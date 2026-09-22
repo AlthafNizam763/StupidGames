@@ -44,6 +44,24 @@
   /* Information and links. */
   --color-beacon: #6fa8ff;
 
+  /*
+   * The Cat.
+   *
+   * A fifth accent, and the only one with a rule attached: it may be used on
+   * the private surfaces of the player who is the Cat, and on post-match
+   * screens where roles are already public. It must never appear on anything
+   * a second player can see during a live match, because a colour nobody else
+   * has is a tell (§BG).
+   *
+   * Violet rather than another red: `alert` already means danger, and the Cat
+   * is not a warning. It is the colour of the thing you were not told about.
+   */
+  --color-cat: #b06bff;
+  --color-cat-dim: #8b3fe0;
+  --color-cat-glow: #b06bff26;
+  /* The Cat's eyes, and the only place this exact gold is used. */
+  --color-cat-eye: #ffc15e;
+
   /* -- type --------------------------------------------------------------- */
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -266,4 +284,174 @@
 
 @utility animate-rise {
   animation: voidline-rise 0.35s var(--ease-out-soft) both;
+}
+
+/* ===========================================================================
+   Character motion
+   ---------------------------------------------------------------------------
+   A character standing still should still be alive. These loops are the
+   cheapest way to say so: a transform on one group, composited off the main
+   thread, no layout, no paint.
+
+   IMPORTANT: every character uses the same idle timing, whatever they are
+   underneath. An imposter whose idle ran at a different rate would be
+   identifiable from across the map without anybody needing to think (§BG), so
+   this is one animation and there is no second one.
+   =========================================================================== */
+
+@keyframes voidline-character-idle {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-1.5%) scaleY(1.018);
+  }
+}
+
+@utility animate-character-idle {
+  animation: voidline-character-idle 2.6s var(--ease-out-soft) infinite;
+}
+
+/* The Cat's tail. Private surfaces only, so it may have its own rhythm. */
+@keyframes voidline-cat-tail {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
+@utility animate-cat-tail {
+  animation: voidline-cat-tail 3.4s var(--ease-out-soft) infinite;
+}
+
+/* ===========================================================================
+   Reveal and emphasis
+   =========================================================================== */
+
+/*
+ * The shadow that passes over the crew member before the Cat appears. A single
+ * sweeping band rather than a screen-wide flash: a full-screen white frame is
+ * unpleasant on an OLED phone at night and is a genuine problem for
+ * photosensitive players.
+ */
+@keyframes voidline-shadow-pass {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(220%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+@utility animate-shadow-pass {
+  animation: voidline-shadow-pass 0.9s var(--ease-out-soft) both;
+}
+
+/* The moment the eyes catch the light. Short, and it does not repeat. */
+@keyframes voidline-eye-glow {
+  0% {
+    opacity: 0;
+    filter: brightness(1);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(1.6);
+  }
+  100% {
+    opacity: 0.85;
+    filter: brightness(1);
+  }
+}
+
+@utility animate-eye-glow {
+  animation: voidline-eye-glow 0.7s var(--ease-out-soft) both;
+}
+
+/* Scale-in with a small overshoot. For anything that lands rather than fades. */
+@keyframes voidline-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility animate-pop {
+  animation: voidline-pop 0.32s var(--ease-out-soft) both;
+}
+
+/*
+ * A short, small shake. Deliberately 3px and 240ms: enough to register as an
+ * impact, not enough to make anybody feel sick, and far short of the
+ * three-flashes-per-second threshold.
+ */
+@keyframes voidline-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-3px, 1px, 0);
+  }
+  40% {
+    transform: translate3d(3px, -1px, 0);
+  }
+  60% {
+    transform: translate3d(-2px, -1px, 0);
+  }
+  80% {
+    transform: translate3d(2px, 1px, 0);
+  }
+}
+
+@utility animate-shake {
+  animation: voidline-shake 0.24s ease-in-out both;
+}
+
+/* A bar filling from nothing, for vote tallies and objective progress. */
+@keyframes voidline-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@utility animate-fill {
+  animation: voidline-fill 0.5s var(--ease-out-soft) both;
+  transform-origin: left center;
+}
+
+/* ===========================================================================
+   Cat surfaces
+   =========================================================================== */
+
+/*
+ * The backdrop behind a private Cat screen. Violet where the station backdrop
+ * is blue, so the player knows instantly that this screen is theirs alone -
+ * and dark enough that somebody glancing over a shoulder sees a dark screen
+ * rather than a colour they can name (§AO).
+ */
+@utility cat-backdrop {
+  background-color: var(--color-void-950);
+  background-image:
+    radial-gradient(52rem 34rem at 50% 12%, #2a123f99, transparent 72%),
+    radial-gradient(30rem 24rem at 82% 100%, #1a0b2a80, transparent 70%);
 }

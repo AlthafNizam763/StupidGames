@@ -9,7 +9,7 @@ import {
 import { AppError } from '../lib/AppError';
 import { logger } from '../lib/logger';
 import { roomManager, toRoomState, type Room } from '../game/RoomManager';
-import { userRepository } from '../repositories/UserRepository';
+import { toPublicUser, userRepository } from '../repositories/UserRepository';
 
 /**
  * Lobby membership rules.
@@ -40,6 +40,7 @@ async function loadPlayer(userId: string) {
     userId: user.id as string,
     username: user.username,
     avatar: user.avatar,
+    appearance: toPublicUser(user).appearance,
     level: user.level,
   };
 }

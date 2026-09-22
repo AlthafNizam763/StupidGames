@@ -1,5 +1,5 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
-import { DEFAULT_AVATAR_ID, levelForXp } from '@voidline/shared';
+import { DEFAULT_AVATAR_ID, deriveAppearance, levelForXp } from '@voidline/shared';
 
 /**
  * The user account.
@@ -47,6 +47,27 @@ const achievementProgressSchema = new Schema(
   { _id: false },
 );
 
+/**
+ * How this player is drawn.
+ *
+ * Free-form in the schema and validated in the service against the shared
+ * roster, so retiring a hair style does not make every stored character fail
+ * Mongoose validation on read.  repairs slot by slot.
+ */
+const appearanceSchema = new Schema(
+  {
+    body: { type: String, required: true },
+    skin: { type: String, required: true },
+    hair: { type: String, required: true },
+    hairColour: { type: String, required: true },
+    outfit: { type: String, required: true },
+    shoes: { type: String, required: true },
+    accessory: { type: String, default: null },
+    backpack: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const achievementSchema = new Schema(
   {
     id: { type: String, required: true },
@@ -78,6 +99,16 @@ const userSchema = new Schema(
     avatar: {
       type: String,
       default: DEFAULT_AVATAR_ID,
+    },
+    /**
+     * Seeded from the account id so a new station is not full of identical
+     * crew. Only ever an initial value - the player's own choices replace it.
+     */
+    appearance: {
+      type: appearanceSchema,
+      default: function defaultAppearance(this: { _id?: unknown }) {
+        return deriveAppearance(String(this._id ?? Math.random()));
+      },
     },
     xp: { type: Number, default: 0, min: 0 },
     level: { type: Number, default: 1, min: 1 },

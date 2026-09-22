@@ -30,9 +30,9 @@ import type {
   TaskAssignment,
   TaskCompletedEvent,
   TaskId,
-  TaskSubmission,
   TeamTaskProgress,
 } from '../types/task';
+import type { PuzzleSolution, TaskPuzzle } from '../types/puzzle';
 import type { SabotageType } from '../types/sabotage';
 import type { UserId } from '../types/user';
 
@@ -58,9 +58,11 @@ export interface ClientToServerEvents {
   'player:move': (input: MovementInput) => void;
   'player:eliminate': (input: { targetId: PlayerId }, ack: Ack) => void;
 
-  'task:start': (input: { taskId: TaskId }, ack: Ack<TaskAssignment>) => void;
-  'task:progress': (input: TaskSubmission, ack: Ack<TaskAssignment>) => void;
-  'task:complete': (input: TaskSubmission, ack: Ack<TaskCompletedEvent>) => void;
+  /** Opens an objective and receives its puzzle. The answer stays server-side. */
+  'task:start': (input: { taskId: TaskId }, ack: Ack<TaskPuzzle>) => void;
+  /** Submits one step. Returns the next puzzle, or null when the objective is done. */
+  'task:progress': (input: PuzzleSolution, ack: Ack<TaskPuzzle | null>) => void;
+  'task:complete': (input: PuzzleSolution, ack: Ack<TaskCompletedEvent>) => void;
 
   'sabotage:start': (input: { type: SabotageType }, ack: Ack<SabotageState>) => void;
   'sabotage:repair': (input: { stationId: string }, ack: Ack<SabotageState | null>) => void;

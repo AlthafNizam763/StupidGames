@@ -1,6 +1,7 @@
 import type { GameMode, GamePhase } from '../constants/game';
 import type { MapId } from '../constants/map';
 import type { ISODateString } from './common';
+import type { CharacterAppearance } from '../constants/appearance';
 import type { AvatarId, PublicUser, UserId } from './user';
 
 export type RoomId = string;
@@ -51,6 +52,7 @@ export interface LobbyPlayer {
   userId: UserId;
   username: string;
   avatar: AvatarId;
+  appearance: CharacterAppearance;
   level: number;
   isHost: boolean;
   isReady: boolean;

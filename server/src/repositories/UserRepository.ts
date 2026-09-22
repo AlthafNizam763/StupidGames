@@ -1,4 +1,11 @@
-import type { AchievementId, PublicUser, SelfUser, UserProfile, UserStats } from '@voidline/shared';
+import {
+  coerceAppearance,
+  type AchievementId,
+  type PublicUser,
+  type SelfUser,
+  type UserProfile,
+  type UserStats,
+} from '@voidline/shared';
 import { UserModel, type UserDocument } from '../models/User';
 
 /**
@@ -24,6 +31,9 @@ export function toPublicUser(doc: UserDocument): PublicUser {
     avatar: doc.avatar,
     level: doc.level,
     xp: doc.xp,
+    // Repaired on read rather than trusted, so a roster change never yields an
+    // unrenderable character.
+    appearance: coerceAppearance(doc.appearance),
   };
 }
 

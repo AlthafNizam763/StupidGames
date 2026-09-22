@@ -1,4 +1,10 @@
-import { ErrorCode, isAvatarId, type SelfUser, type UserProfile } from '@voidline/shared';
+import {
+  ErrorCode,
+  isAvatarId,
+  isCharacterAppearance,
+  type SelfUser,
+  type UserProfile,
+} from '@voidline/shared';
 import { AppError } from '../lib/AppError';
 import { logger } from '../lib/logger';
 import { toSelfUser, toUserProfile, userRepository } from '../repositories/UserRepository';
@@ -52,6 +58,21 @@ export const userService = {
         });
       }
       user.avatar = input.avatar;
+    }
+
+    if (input.appearance !== undefined) {
+      /*
+       * Validated as a whole against the shared roster. A partial update would
+       * let a caller set one slot to a value the renderer has no art for, and
+       * the renderer would then have to guess - so the whole character is
+       * replaced or the request is refused.
+       */
+      if (!isCharacterAppearance(input.appearance)) {
+        throw new AppError(ErrorCode.VALIDATION_ERROR, 'That is not a valid character.', {
+          fieldErrors: [{ path: 'appearance', message: 'Choose from the available options.' }],
+        });
+      }
+      user.appearance = input.appearance;
     }
 
     if (input.username !== undefined && input.username !== user.username) {

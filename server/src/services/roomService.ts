@@ -3,6 +3,7 @@ import {
   ErrorCode,
   GamePhase,
   MIN_PLAYERS_TO_START,
+  DEFAULT_APPEARANCE,
   ROOM_CODE_PATTERN,
   validateRoomSettings,
   type CreateRoomInput,
@@ -95,6 +96,7 @@ export const roomService = {
         userId: user.id as string,
         username: user.username,
         avatar: user.avatar,
+        appearance: toPublicUser(user).appearance,
         level: user.level,
       },
       validation.settings,
@@ -131,7 +133,14 @@ export const roomService = {
         ? toPublicUser(host)
         : // The host's account was deleted mid-room. Vanishingly unlikely, but
           // returning a broken object here would crash the join screen.
-          { id: room.hostId, username: 'Unknown', avatar: 'operator-01', level: 1, xp: 0 },
+          {
+            id: room.hostId,
+            username: 'Unknown',
+            avatar: 'operator-01',
+            level: 1,
+            xp: 0,
+            appearance: DEFAULT_APPEARANCE,
+          },
       map: room.settings.map,
       gameMode: room.settings.gameMode,
       playerCount: room.members.size,

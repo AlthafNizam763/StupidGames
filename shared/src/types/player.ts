@@ -1,4 +1,5 @@
 import type { PlayerRole } from '../constants/game';
+import type { CharacterAppearance } from '../constants/appearance';
 import type { ZoneId } from '../constants/map';
 import type { ConnectionState } from './room';
 import type { EpochMs, Vec2 } from './common';
@@ -32,6 +33,8 @@ export interface PublicPlayerState {
   id: PlayerId;
   username: string;
   avatar: AvatarId;
+  /** Public. Every client draws every player, Saboteur included. */
+  appearance: CharacterAppearance;
   position: Vec2;
   facing: Facing;
   animation: AnimationState;
