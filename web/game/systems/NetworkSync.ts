@@ -82,6 +82,14 @@ export class NetworkSync {
         this.targets.delete(id);
       }
     }
+
+    /*
+     * Bodies are taken wholesale, not merged. The server's list is the list -
+     * a body it has stopped sending was cleared by a council, and a local copy
+     * surviving that would let the HUD offer a report that the server will
+     * refuse.
+     */
+    world.bodies = snapshot.bodies;
   }
 
   /** Applies a positional delta. Far smaller than a snapshot and far more frequent. */

@@ -137,6 +137,36 @@ function graceKey(userId: string, roomId: string): string {
   return `${userId}:${roomId}`;
 }
 
+/**
+ * Mirrors a connection change into a running match.
+ *
+ * The room and the match keep separate player records, and the room's copy is
+ * the one the lobby reads. Nothing propagated between them, which had three
+ * consequences, none of which surfaced as an error:
+ *
+ *  - a player who dropped mid-stride kept their velocity, so the simulation
+ *    walked them into the nearest wall for the length of the grace period
+ *    while everyone else watched an apparently connected player stroll off
+ *  - the public snapshot reported them as CONNECTED, contradicting the
+ *    `player:disconnect` event sent on the same tick
+ *  - the win condition was never re-evaluated on a drop, so a side that
+ *    entirely disconnected left the match running with nobody able to win it
+ *
+ * `MatchManager.setConnection` already did the right thing with all three. It
+ * was simply never called.
+ *
+ * A no-op when no match is running, which is the common case: most connection
+ * churn happens in the lobby.
+ */
+function setMatchConnection(
+  roomId: string,
+  userId: string,
+  connection: ConnectionState,
+): void {
+  const match = matches?.byRoom(roomId);
+  if (match) matches?.setConnection(match, userId, connection);
+}
+
 function cancelGrace(userId: string, roomId: string): void {
   const key = graceKey(userId, roomId);
   const timer = graceTimers.get(key);
@@ -332,6 +362,9 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 
         if (resumed) {
           socket.to(channel(room.id)).emit(SERVER_EVENT.PLAYER_RECONNECT, { playerId: userId });
+          // The room held the seat; the match has to be told the player is back
+          // or the snapshot keeps reporting them as gone. See `setMatchConnection`.
+          setMatchConnection(room.id, userId, ConnectionState.CONNECTED);
         }
 
         broadcastRoom(room);
@@ -601,12 +634,23 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
       const room = lobbyService.setConnection(userId, roomId, ConnectionState.RECONNECTING);
       if (!room) return;
 
+      // A running match keeps its own player records, and the room does not
+      // write to them. Without this the simulation never learns about the drop.
+      setMatchConnection(roomId, userId, ConnectionState.RECONNECTING);
+
       namespace.to(channel(roomId)).emit(SERVER_EVENT.PLAYER_DISCONNECT, { playerId: userId });
       broadcastRoom(room);
 
       cancelGrace(userId, roomId);
       const timer = setTimeout(() => {
         graceTimers.delete(graceKey(userId, roomId));
+
+        // The seat is gone for good now, so the match stops counting them as
+        // someone who might come back - which is what lets a side that has
+        // entirely dropped out resolve rather than leaving the match running
+        // with nobody able to win it.
+        setMatchConnection(roomId, userId, ConnectionState.DISCONNECTED);
+
         const after = lobbyService.expireGrace(userId, roomId);
         if (after) broadcastRoom(after);
       }, RECONNECT_GRACE_MS);

@@ -30,6 +30,7 @@ export function createWorld(): World {
   return {
     entities: new Map(),
     localId: null,
+    bodies: [],
     bounds: { minX: 0, minY: 0, maxX: 1600, maxY: 1200 },
     obstacles: [],
     zones: [],

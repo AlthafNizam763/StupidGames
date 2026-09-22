@@ -401,6 +401,19 @@ export class MatchManager {
       player.velocity.y = 0;
     }
 
+    /*
+     * Push a snapshot.
+     *
+     * `game:state` is otherwise only sent on a phase change, so without this a
+     * connection change would not reach anyone until the next council - leaving
+     * the authoritative snapshot saying CONNECTED about a player the clients
+     * were separately told had dropped, for minutes at a time.
+     *
+     * Safe to send eagerly because connection changes are rare: this fires on
+     * churn, not on the tick.
+     */
+    this.events.onSnapshot(match);
+
     // A side losing its last connected member can decide the match.
     this.checkOutcome(match);
   }

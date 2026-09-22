@@ -5,6 +5,7 @@ import { applyInput, stepEntity } from '../systems/MovementSystem';
 import { NetworkSync } from '../systems/NetworkSync';
 import { GameLoop } from './GameLoop';
 import type { EngineStats, World } from './types';
+import { nearestTo, type ProximityQuery, type ProximityResult } from './proximity';
 import type { GameSnapshot, MapData, MovementDelta, ZoneId } from '@voidline/shared';
 
 /**
@@ -130,6 +131,22 @@ export class Engine {
   localZone(): ZoneId | null {
     const local = getLocalEntity(this.world);
     return local ? zoneAt(this.world, local.position.x, local.position.y) : null;
+  }
+
+  /**
+   * What the local player is standing near (§41 HUD affordances).
+   *
+   * A *pull* API, on purpose. The HUD needs to know when to light up "Use" or
+   * "Report", and the alternative - the engine pushing proximity into React -
+   * would mean a setState from inside the loop, which is exactly what the
+   * engine/React boundary exists to prevent. Call it on a timer at a few
+   * hertz; a button appearing 200ms after you walk up to a terminal is
+   * imperceptible, and sixty React renders a second is not.
+   *
+   * See proximity.ts for what this deliberately does not know.
+   */
+  nearest(query: ProximityQuery): ProximityResult {
+    return nearestTo(this.world, query);
   }
 
   /** Connects the engine to the network. Without it the engine runs offline. */

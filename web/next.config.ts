@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { buildCsp } from './lib/securityHeaders';
 
 /*
  * Origins the client is allowed to talk to, for the CSP below.
@@ -12,42 +13,9 @@ const voiceOrigin = process.env.NEXT_PUBLIC_VOICE_URL ?? '';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-/**
- * Where a script on this page may send data.
- *
- * Read from the same environment the client reads, so a deployment that changes
- * its API host cannot end up with a policy that blocks it. `wss:`/`ws:` are
- * listed because the socket may upgrade to a scheme the configured origin does
- * not literally name.
- */
-const connectSources = [
-  ...new Set(["'self'", apiOrigin, socketOrigin, voiceOrigin, 'wss:', 'ws:'].filter(Boolean)),
-].join(' ');
-
-/*
- * `frame-ancestors` overrides X-Frame-Options where both are present.
- *
- * Production is 'none' - the game embeds nothing and is embedded nowhere. In
- * development it is 'self', because the responsive review harness at
- * /design/viewports frames the app in iframes to get true narrow layout
- * viewports, and 'none' would silently break it. That harness is 404 in
- * production, so the two settings never overlap.
- */
-const frameAncestors = isProduction ? "'none'" : "'self'";
-
-const CSP = [
-  "default-src 'self'",
-  // Next's hydration payload is inline. 'unsafe-eval' is deliberately absent.
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data: blob:",
-  `connect-src ${connectSources}`,
-  `frame-ancestors ${frameAncestors}`,
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ');
+// Built by a tested pure function rather than assembled here - see the note in
+// lib/securityHeaders.ts for why this particular string gets a test.
+const CSP = buildCsp({ isProduction, apiOrigin, socketOrigin, voiceOrigin });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -93,8 +61,9 @@ const nextConfig: NextConfig = {
              *
              * `'unsafe-inline'` on styles is required by Next's streaming style
              * injection and by the inline `style` attributes the HUD uses for
-             * computed positions. `'unsafe-eval'` is deliberately absent, which
-             * shuts the usual route from injection to execution.
+             * computed positions. `'unsafe-eval'` is absent from the production
+             * script policy - see `scriptSources` above, which relaxes it in
+             * development only, for Turbopack's HMR runtime.
              */
             key: 'Content-Security-Policy',
             value: CSP,

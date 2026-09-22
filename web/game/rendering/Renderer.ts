@@ -107,6 +107,8 @@ export class Renderer {
     this.drawZones(ctx, world);
     this.drawTerminals(ctx, world);
     this.drawObstacles(ctx, world);
+    // Under the living, so somebody standing over a body never hides it.
+    this.drawBodies(ctx, world);
     this.drawZoneLabels(ctx, world);
     this.drawEntities(ctx, world);
 
@@ -216,6 +218,40 @@ export class Renderer {
       ctx.arc(station.position.x, station.position.y, 13, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+  }
+
+  /**
+   * Bodies awaiting report.
+   *
+   * Deliberately not drawn as a suit in the victim's colour. A body is evidence
+   * and has to read as *a body* from across a room on a phone screen, in one
+   * glance, before anybody has to think about whose it is - so it is a distinct
+   * silhouette in one alarm colour, and the identity is in the report dialogue
+   * rather than in the pixels.
+   *
+   * Nothing here says who did it. The renderer is never given that.
+   */
+  private drawBodies(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const body of world.bodies) {
+      if (!this.camera.isVisible(body.position.x, body.position.y, 28)) continue;
+
+      const { x, y } = body.position;
+
+      // A slumped, wider-than-tall mass, so the shape alone distinguishes it
+      // from a standing player at a glance and without relying on colour.
+      ctx.fillStyle = '#41131d';
+      ctx.strokeStyle = '#ff5d73';
+      ctx.lineWidth = 2 / this.camera.scale;
+      ctx.beginPath();
+      ctx.ellipse(x, y + 4, 17, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ff5d73';
+      ctx.beginPath();
+      ctx.arc(x - 9, y - 1, 6, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

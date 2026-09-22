@@ -49,7 +49,19 @@ export interface MovementDelta {
   serverTime: EpochMs;
 }
 
-/** The private half of the state, delivered only to its owner. */
+/**
+ * The private half of the state, delivered only to its owner.
+ *
+ * NOTE ON THE NESTING. This travels as the `self` field of `game:start`, so a
+ * player's own role is reached at `payload.self.self.role` — the outer `self`
+ * is this object, the inner one is the player inside it. It reads like a typo
+ * and is not.
+ *
+ * Worth the warning because the failure is quiet: a test asserted
+ * `payload.self.role`, read `undefined`, and `Array.join` rendered that as an
+ * empty string, so it reported "roles were ,,," instead of pointing at the
+ * wrong path.
+ */
 export interface GameSelfState {
   self: SelfPlayerState;
   tasks: TaskAssignment[];

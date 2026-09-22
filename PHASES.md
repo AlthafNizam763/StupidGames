@@ -29,8 +29,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 23 | Friends / social | **done** |
 | 24 | Voice chat | **done** |
 | 25 | Anti-cheat / security hardening | **done** |
-| 26 | Testing | next |
-| 27 | Performance optimization | |
+| 26 | Testing | **done** |
+| 27 | Performance optimization | next |
 | 28 | Production deployment | |
 
 ## Phase 1 — what was built
@@ -438,3 +438,63 @@ The first version of the CSP shipped **without its `connect-src` directive** —
 Type-check, lint and all 358 tests stayed green throughout. Nothing in this repository could have caught it, because it is a header on a response that no test reads. It was found by two people looking at a running server with `curl` — independently, within minutes of each other.
 
 The lesson is narrow and worth keeping: `.filter(Boolean)` on a configuration array converts a missing entry into a silent omission. The verification for anything that only exists at the HTTP boundary is a request, not a test.
+
+## Phase 26 — testing
+
+392 tests: 309 on the server, 83 on the web client. Everything runs from `npm test` at the root, with no build step and no browser.
+
+### What §48 asked for, and where it lives
+
+| §48 requirement | Where |
+| --------------- | ----- |
+| Role assignment is random and correct | `server/src/game/match/match.test.ts` — distribution over many draws, and `secureShuffle` |
+| Kill validation | `match.test.ts` — all seven refusal paths |
+| Task verification | `match.test.ts` — server-generated answers, step order, replay |
+| Voting tally and ejection | `match.test.ts`, plus the full path in `match.e2e.test.ts` |
+| Win conditions | `match.test.ts` — each reason, including a fully disconnected side |
+| Secret state never leaks | `serialise.test.ts` by payload shape; both e2e suites assert no role string appears in any public payload |
+| Dead players cannot talk to the living | `match.test.ts` — `recipientsFor` |
+| Reconnection keeps a seat and a role | `reconnect.e2e.test.ts` |
+| A full match, end to end | `match.e2e.test.ts` — four clients, lobby to persisted result |
+| Client prediction and reconciliation | `web/game/systems/NetworkSync.test.ts` |
+| Collision | `web/game/collision/*.test.ts` |
+
+### The end-to-end suites
+
+`server/src/test/e2e/` starts a real MongoDB, a real Express app and a real Socket.IO server in-process, then drives them with real socket clients. They exist because the unit tests demonstrably could not catch a whole class of bug in this project. Three that shipped green:
+
+- the voting result was stored *after* the event that broadcasts it, so every client received an empty tally
+- the CSP went out without `connect-src`, which would have blocked the client from reaching its own server
+- movement bypassed the rate limiter, because it deliberately bypasses the handler wrapper the limiter lives in
+
+Each is a seam between two components that are individually correct. Unit tests check components.
+
+### What the new tests found
+
+**The match was never told about disconnections.** The socket disconnect handler updated the *room's* membership and left the *match's* player records untouched. `MatchManager.setConnection` already did the right thing — zero the velocity, re-check the outcome — and was never called by anything. Three consequences, none of which raised an error:
+
+- a player who dropped mid-stride kept their velocity, so the simulation walked them into the nearest wall for the length of the grace period while everyone else watched an apparently healthy player stroll off
+- the authoritative snapshot reported them as `CONNECTED`, contradicting the `player:disconnect` sent on the same tick
+- the win condition was never re-evaluated, so a side that entirely disconnected left the match running with nobody able to win it
+
+**`game:state` was never sent on a state change outside a phase transition.** `onSnapshot` was declared in `MatchEvents` and wired up in `matchWiring`, and nothing in `game/` ever called it. A connection change now pushes one; connection churn is rare, so this costs nothing on the tick.
+
+### The CSP now has a test
+
+The `connect-src` bug above was previously described here as something no test could catch. That was true of a header assembled inline in `next.config.ts`. It is now built by `buildCsp` in `web/lib/securityHeaders.ts`, a pure function with a test per failure mode: the client can reach its own API and socket, an unconfigured voice origin is omitted rather than emitted as an empty source, and `'unsafe-eval'` is absent in production.
+
+The narrower lesson still holds: `.filter(Boolean)` on a configuration array turns a missing entry into a silent omission.
+
+### Two test bugs worth recording
+
+Both looked exactly like product failures, and neither was.
+
+The first: `game:start` carries `{ snapshot, self }` where `self` is a `GameSelfState`, which itself wraps `{ self, tasks }` — so a player's own role is at `payload.self.self.role`. Reading `payload.self.role` returns `undefined`, and `Array.join` renders that as an empty string, so the failure reported "roles were ,,," rather than pointing at the path. The nesting is now documented at the type.
+
+The second: `MatchPlayer` keys on `userId`, not `id`. Tests written against `player.id` passed `undefined` into `setConnection`, which found no player and returned quietly — three assertions failed at once and looked like the fix not working.
+
+Both share a shape: an undefined property read through an API that has no reason to complain. The defence is asserting on the value you expect rather than on "something happened".
+
+### Type-checking is not optional for tests
+
+Four of the new web tests passed while referring to enum members that do not exist — `ZoneId.HUB`, `TaskType.CALIBRATE`, `Facing.DOWN`. They resolved to `undefined`, no assertion depended on them, and the suite was green. `tsc` caught all of them. A test file is source.

@@ -1162,3 +1162,96 @@ describe('a full match', () => {
     assert.equal(outcome?.reason, WinReason.OBJECTIVES_COMPLETED);
   });
 });
+
+/* ======================================================= connections = */
+
+describe('match connections', () => {
+  /** A manager that records how many snapshots it was asked to broadcast. */
+  function makeManager() {
+    let snapshots = 0;
+    const manager = new MatchManager({
+      onSnapshot: () => {
+        snapshots += 1;
+      },
+      onDelta: () => {},
+      onSabotageUpdate: () => {},
+      onMeetingOpenVoting: () => {},
+      onMeetingResolved: () => {},
+      onMatchEnded: () => {},
+      onPhaseChange: () => {},
+    });
+    managers.push(manager);
+    return { manager, snapshots: () => snapshots };
+  }
+
+  it('stops a dropped player where they stood', () => {
+    const { manager } = makeManager();
+    const match = makeMatch();
+    const player = operatorsOf(match)[0]!;
+
+    // Mid-stride when the connection died.
+    player.velocity.x = 120;
+    player.velocity.y = -80;
+
+    manager.setConnection(match, player.userId, ConnectionState.RECONNECTING);
+
+    /*
+     * Without this the simulation keeps integrating their last velocity for
+     * the whole grace period, walking them into the nearest wall while every
+     * other client draws an apparently healthy player strolling away.
+     */
+    assert.equal(player.velocity.x, 0);
+    assert.equal(player.velocity.y, 0);
+    assert.equal(player.connection, ConnectionState.RECONNECTING);
+  });
+
+  it('broadcasts the change, because game:state is not sent on a timer', () => {
+    const { manager, snapshots } = makeManager();
+    const match = makeMatch();
+
+    const before = snapshots();
+    manager.setConnection(match, operatorsOf(match)[0]!.userId, ConnectionState.RECONNECTING);
+
+    // Snapshots otherwise only go out on a phase change, so without this the
+    // roster would claim the player was still connected until the next
+    // council - contradicting the player:disconnect sent on the same tick.
+    assert.equal(snapshots(), before + 1);
+  });
+
+  it('leaves a returning player connected and moving again', () => {
+    const { manager } = makeManager();
+    const match = makeMatch();
+    const player = operatorsOf(match)[0]!;
+
+    manager.setConnection(match, player.userId, ConnectionState.RECONNECTING);
+    manager.setConnection(match, player.userId, ConnectionState.CONNECTED);
+
+    assert.equal(player.connection, ConnectionState.CONNECTED);
+  });
+
+  it('ignores a player who is not in this match', () => {
+    const { manager } = makeManager();
+    const match = makeMatch();
+
+    // A stale socket for a different room must not throw its way out of the
+    // disconnect handler and skip the cleanup that follows it.
+    assert.doesNotThrow(() =>
+      manager.setConnection(match, 'nobody-here', ConnectionState.RECONNECTING),
+    );
+  });
+
+  it('re-checks the outcome, so a side that drops out entirely resolves', () => {
+    const { manager } = makeManager();
+    const match = makeMatch(1, 1);
+
+    /*
+     * The last Operator goes for good. Nothing else will happen in this match
+     * - there is nobody left to kill, report or finish an objective - so if
+     * the drop does not trigger the evaluation, the match runs on with no
+     * possible winner until something times it out.
+     */
+    manager.setConnection(match, operatorsOf(match)[0]!.userId, ConnectionState.DISCONNECTED);
+
+    assert.ok(match.outcome, 'a fully disconnected side did not resolve the match');
+  });
+});

@@ -1,4 +1,4 @@
-import type { AnimationState, Facing, MapData, MapZone, Vec2 } from '@voidline/shared';
+import type { AnimationState, DeadBody, Facing, MapData, MapZone, Vec2 } from '@voidline/shared';
 import type { SpatialGrid } from '../collision/SpatialGrid';
 
 /**
@@ -54,6 +54,18 @@ export interface Entity {
 export interface World {
   entities: Map<string, Entity>;
   localId: string | null;
+  /**
+   * Bodies awaiting report, exactly as the last snapshot listed them.
+   *
+   * Replaced wholesale rather than merged: the server decides which bodies
+   * exist and which have been reported, and a body that vanishes from the
+   * snapshot has been cleared by a council. Keeping a local copy alive past
+   * that would let a player report a body twice.
+   *
+   * Held as server state rather than as entities because they do not move, are
+   * not interpolated, and are not simulated - they are a list of coordinates.
+   */
+  bodies: DeadBody[];
   /** Outer hull. Nothing leaves it. */
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   /** Solid geometry, from the server-authored map. */
