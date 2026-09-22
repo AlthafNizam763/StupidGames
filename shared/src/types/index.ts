@@ -4,6 +4,7 @@ export * from './room';
 export * from './player';
 export * from './task';
 export * from './puzzle';
+export * from './voice';
 export * from './sabotage';
 export * from './meeting';
 export * from './game';

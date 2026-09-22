@@ -27,9 +27,9 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 21 | Results + XP | **done** |
 | 22 | Leaderboard | **done** |
 | 23 | Friends / social | **done** |
-| 24 | Voice chat | next |
-| 25 | Anti-cheat / security hardening | |
-| 26 | Testing | |
+| 24 | Voice chat | **done** |
+| 25 | Anti-cheat / security hardening | **done** |
+| 26 | Testing | next |
 | 27 | Performance optimization | |
 | 28 | Production deployment | |
 
@@ -398,3 +398,43 @@ The game itself. Server mechanism and client transport; screens belong to the UI
 **The voting result was stored after the event that broadcasts it.** `resolveVoting` called `onMeetingResolved` and *then* recorded the tally, so the broadcast found nothing and clients could only infer the outcome from the next snapshot. Caught by the socket end-to-end run, not by the unit tests — the unit tests called `tallyVotes` directly and never exercised the ordering.
 
 **Two of my own test bugs, both worth noting** because both looked like product failures: a movement assertion that read positions out of `game:state` (which is event-driven) instead of `game:delta` (which carries motion), and a wall test that placed the player inside a doorway and then asserted they could not walk through it.
+
+## Phase 24 — voice chat
+
+**The permission derivation is the whole security surface**, and it is a pure function of server state: match phase and whether the player is alive. A client asks for a token and is told which channel it is for; the channel is not an input, so there is nothing to forge.
+
+The rule, stated once: living players hear living players, dead players hear dead players, and the two sets never intersect during a live match. There is a test that asserts this exhaustively — every phase against every alive/dead pairing — rather than case by case, because a rule checked case by case can be broken by a phase added later.
+
+**LiveKit is implemented for real.** Its access token is an HS256 JWT with a documented claim set, so tokens are minted and their grants asserted without needing a LiveKit server. Agora, Daily and native WebRTC report themselves unavailable and name the provider asked for, rather than shipping something that looks like support and fails at the first call.
+
+## Decisions made in Phase 24
+
+**There is no Saboteur voice channel.** A private channel for one team is the easiest possible way to leak a role — a player visibly talking when nobody else hears anything has told the room what they are.
+
+**Everyone is silent during the role reveal.** A player reacting out loud to their own role, at the exact moment everyone is looking at their screen, is a tell — and it is the one moment the game can prevent it.
+
+**Dead is checked before any phase.** Ordering it that way means a phase added later cannot accidentally grant a dead player a living channel, because they never reach the switch.
+
+**No data channel on the voice token.** A second, unvalidated channel between clients would route around every rule the server enforces.
+
+**A player with no channel gets no token, not a muted one.** A token for a room is permission to hear that room.
+
+## Phase 25 — security hardening
+
+Two real gaps closed, both introduced by earlier decisions that were right in themselves.
+
+**Movement escaped the rate limiter.** `player:move` is deliberately outside the acknowledged-handler wrapper — an ack per input at 15Hz costs more than the input is worth — and as a result it also escaped the limiter. A client could send ten thousand a second; the server would clamp each one's *effect* and still pay to parse all of them. `AbuseTracker` gives movement its own budget at triple the documented rate, so a client that stalls and catches up is never punished for bad wifi.
+
+**Refresh tokens survived a password change.** SECURITY.md admitted this. Every refresh token now carries the account's `tokenVersion`, and a password reset bumps it — so every session opened with the old password dies at once. That is the case that matters: you reset *because* the password was stolen. Per-token revocation with reuse detection still needs a server-side token store and is still absent; the docs say which is which.
+
+**Sustained rejection now disconnects.** A rejected action in ones and twos is normal play. Forty in ten seconds is a script probing for an unguarded action, and nothing was counting.
+
+**A real Content Security Policy** on the web app, with `connect-src` scoped to the configured API and socket origins and `'unsafe-eval'` absent.
+
+## The CSP bug, and why it matters
+
+The first version of the CSP shipped **without its `connect-src` directive** — a shell heredoc ate the template literal and left a bare comma in the array, which `.filter(Boolean)` then silently dropped. With `connect-src` absent, `default-src 'self'` governs connections: every call to the API and the entire Socket.IO upgrade would have been blocked by the browser.
+
+Type-check, lint and all 358 tests stayed green throughout. Nothing in this repository could have caught it, because it is a header on a response that no test reads. It was found by two people looking at a running server with `curl` — independently, within minutes of each other.
+
+The lesson is narrow and worth keeping: `.filter(Boolean)` on a configuration array converts a missing entry into a silent omission. The verification for anything that only exists at the HTTP boundary is a request, not a test.

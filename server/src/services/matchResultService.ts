@@ -103,6 +103,7 @@ export async function finaliseMatch(match: Match): Promise<MatchResult> {
       userId: player.userId,
       username: player.username,
       avatar: player.avatar,
+      appearance: player.appearance,
       // Roles are public once a match is over - that is the reveal.
       role: player.role,
       survived: player.survived,

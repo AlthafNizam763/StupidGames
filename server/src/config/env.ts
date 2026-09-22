@@ -59,6 +59,12 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().default('no-reply@voidline.local'),
 
+  /* Voice chat. Unset or 'none' means voice is off and the UI hides it. */
+  VOICE_PROVIDER: z.enum(['none', 'livekit', 'agora', 'daily', 'webrtc']).default('none'),
+  VOICE_API_KEY: z.string().optional(),
+  VOICE_API_SECRET: z.string().optional(),
+  VOICE_SERVER_URL: z.string().optional(),
+
   /** Where password-reset links point. The web client's origin. */
   WEB_APP_URL: z.string().default('http://localhost:3000'),
 });
@@ -138,6 +144,13 @@ export const config = {
     jwtRefreshSecret: resolveSecret('JWT_REFRESH_SECRET', raw.JWT_REFRESH_SECRET),
     accessTokenTtl: raw.JWT_EXPIRES_IN,
     refreshTokenTtl: raw.JWT_REFRESH_EXPIRES_IN,
+  },
+
+  voice: {
+    provider: raw.VOICE_PROVIDER,
+    apiKey: raw.VOICE_API_KEY,
+    apiSecret: raw.VOICE_API_SECRET,
+    serverUrl: raw.VOICE_SERVER_URL,
   },
 
   mail: {

@@ -4,6 +4,7 @@ import type { ISODateString } from './common';
 import type { MatchId } from './game';
 import type { PlayerId } from './player';
 import type { RoomSettings } from './room';
+import type { CharacterAppearance } from '../constants/appearance';
 import type { AvatarId, PublicUser, UserId } from './user';
 
 /** One player's line on the results screen. Roles are public once a match ends. */
@@ -11,6 +12,12 @@ export interface MatchPlayerResult {
   userId: PlayerId;
   username: string;
   avatar: AvatarId;
+  /**
+   * Carried so the results screen draws the character the player actually
+   * chose. Without it a customised character falls back to a derived one -
+   * right for anyone who never customised, wrong for everyone who did.
+   */
+  appearance: CharacterAppearance;
   role: PlayerRole;
   survived: boolean;
   objectivesCompleted: number;

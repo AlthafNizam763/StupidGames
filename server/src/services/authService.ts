@@ -68,7 +68,7 @@ function issueSession(user: UserDocument): SessionResult {
 
   return {
     session: { ...tokens, user: self },
-    refreshToken: signRefreshToken(user.id as string),
+    refreshToken: signRefreshToken(user.id as string, user.tokenVersion ?? 0),
   };
 }
 
@@ -129,10 +129,16 @@ export const authService = {
    * Exchanges a refresh token for a new access token, and issues a fresh
    * refresh token alongside it.
    *
-   * To be precise about what this is not: the previous refresh token stays
-   * valid until it expires. These are stateless JWTs, so revoking one would
-   * require a server-side token store - real rotation-with-revocation, and the
-   * reuse detection it enables, is deliberately deferred rather than implied.
+   * Revocation, precisely:
+   *
+   * - **Bulk revocation works.** Every token carries the account's
+   *   `tokenVersion`, and a password reset bumps it, so every session opened
+   *   with the old password dies at once. That is the case that matters: you
+   *   reset because the password was stolen.
+   * - **Per-token revocation does not.** The previous refresh token stays valid
+   *   until it expires or the version changes. Invalidating one specific token,
+   *   and the reuse detection that enables, needs a server-side token store
+   *   this deliberately does not have.
    *
    * The account is re-read on every refresh rather than trusted from the token.
    * A player disabled ten minutes ago must not keep minting access tokens for
@@ -146,6 +152,18 @@ export const authService = {
 
     if (!user) throw new AppError(ErrorCode.TOKEN_INVALID);
     if (user.disabled) throw new AppError(ErrorCode.ACCOUNT_DISABLED);
+
+    /*
+     * Stateless revocation.
+     *
+     * A password reset bumps the account's counter, so every refresh token
+     * minted before it fails here. Without this, somebody who reset their
+     * password because it was stolen would still have the thief holding a
+     * thirty-day session.
+     */
+    if ((payload.ver ?? 0) !== (user.tokenVersion ?? 0)) {
+      throw new AppError(ErrorCode.TOKEN_INVALID, 'Your session ended when the password changed.');
+    }
 
     return issueSession(user);
   },
@@ -206,6 +224,8 @@ export const authService = {
     if (!user) throw new AppError(ErrorCode.RESET_TOKEN_INVALID);
 
     user.passwordHash = await hashPassword(input.password);
+    // Ends every session opened with the old password, everywhere.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
     await passwordResetRepository.markUsed(record.id as string);

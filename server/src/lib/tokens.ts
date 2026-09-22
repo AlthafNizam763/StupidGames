@@ -34,6 +34,14 @@ export interface AccessTokenPayload {
 export interface RefreshTokenPayload {
   sub: string;
   type: typeof TokenType.REFRESH;
+  /**
+   * The account's token version when this was minted.
+   *
+   * Compared on every refresh. A password reset bumps the account's counter and
+   * every token issued before it stops being accepted - stateless revocation,
+   * without the shared token store a blacklist would need.
+   */
+  ver: number;
 }
 
 const ISSUER = 'voidline';
@@ -48,8 +56,8 @@ export function signAccessToken(userId: string, username: string): string {
   return sign(payload, config.auth.jwtSecret, config.auth.accessTokenTtl);
 }
 
-export function signRefreshToken(userId: string): string {
-  const payload: RefreshTokenPayload = { sub: userId, type: TokenType.REFRESH };
+export function signRefreshToken(userId: string, tokenVersion = 0): string {
+  const payload: RefreshTokenPayload = { sub: userId, type: TokenType.REFRESH, ver: tokenVersion };
   return sign(payload, config.auth.jwtRefreshSecret, config.auth.refreshTokenTtl);
 }
 

@@ -115,6 +115,16 @@ const userSchema = new Schema(
     stats: { type: statsSchema, default: () => ({}) },
     achievements: { type: [achievementSchema], default: [] },
     achievementProgress: { type: achievementProgressSchema, default: () => ({}), select: false },
+    /**
+     * Bumped to invalidate every outstanding session.
+     *
+     * Refresh tokens are stateless JWTs, so there is nothing to delete when a
+     * password changes. Embedding this counter in the token and comparing it on
+     * every refresh gives revocation without a token store: bump the number and
+     * every token minted before it stops verifying (SECURITY.md).
+     */
+    tokenVersion: { type: Number, default: 0, min: 0 },
+
     /** Soft ban. Checked at sign-in and at socket handshake. */
     disabled: { type: Boolean, default: false },
   },

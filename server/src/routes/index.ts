@@ -5,6 +5,7 @@ import { profileRouter, userRouter } from './user.routes';
 import { roomRouter } from './room.routes';
 import { mapRouter } from './map.routes';
 import { friendRouter, leaderboardRouter, matchRouter } from './social.routes';
+import { voiceRouter } from './voice.routes';
 
 /**
  * Route wiring.
@@ -37,3 +38,4 @@ apiRouter.use('/maps', mapRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/matches', matchRouter);
 apiRouter.use('/friends', friendRouter);
+apiRouter.use('/voice', voiceRouter);

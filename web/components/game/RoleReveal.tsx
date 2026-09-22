@@ -59,8 +59,15 @@ export interface RoleRevealProps {
   appearance: CharacterAppearance;
   /** Called when the player dismisses, or when the sequence finishes. */
   onDismiss?: () => void;
-  /** Seconds until the match starts anyway. Omitted, no countdown is shown. */
-  secondsUntilStart?: number | null;
+  /**
+   * Server timestamp at which the match begins regardless. Omitted, no
+   * countdown is shown.
+   *
+   * A deadline rather than a number of seconds, so the countdown stays honest
+   * as it ticks - a seconds value computed by the parent during render is
+   * frozen at whatever it was when that render happened.
+   */
+  startsAt?: number | null;
 }
 
 export function RoleReveal({
@@ -69,7 +76,7 @@ export function RoleReveal({
   avatarId,
   appearance,
   onDismiss,
-  secondsUntilStart = null,
+  startsAt = null,
 }: RoleRevealProps) {
   const isCat = role === PlayerRole.SABOTEUR;
   const identity = roleIdentity(role);
@@ -110,6 +117,7 @@ export function RoleReveal({
   }, [isCat, reducedMotion]);
 
   const revealed = stage === 'REVEALED';
+  const secondsLeft = useCountdown(startsAt);
 
   return (
     <div
@@ -227,9 +235,9 @@ export function RoleReveal({
           {revealed ? 'Understood' : 'Skip'}
         </Button>
 
-        {secondsUntilStart !== null ? (
+        {startsAt !== null ? (
           <p className="font-mono text-xs text-ink-faint tabular-nums">
-            Match begins in {Math.max(0, secondsUntilStart)}s
+            Match begins in {secondsLeft}s
           </p>
         ) : null}
       </div>
@@ -297,4 +305,31 @@ function Figure({
       className="size-56 sm:size-64"
     />
   );
+}
+
+/* ----------------------------------------------------------- countdown - */
+
+/**
+ * Seconds remaining until a server deadline, ticking once a second.
+ *
+ * Takes the deadline rather than a count, because the component that renders
+ * it may not re-render for seconds at a time - a number passed in during the
+ * parent's render would sit frozen on screen while the real clock ran on.
+ */
+function useCountdown(endsAt: number | null): number {
+  const [remaining, setRemaining] = useState(() =>
+    endsAt === null ? 0 : Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)),
+  );
+
+  useEffect(() => {
+    if (endsAt === null) return;
+
+    const tick = () => setRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [endsAt]);
+
+  return remaining;
 }

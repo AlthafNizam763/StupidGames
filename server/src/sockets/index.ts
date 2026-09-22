@@ -44,6 +44,7 @@ import {
   votePayload,
 } from './payloads';
 import { SocketRateLimiter } from './rateLimit';
+import { AbuseTracker } from './abuse';
 import { createMatchManager } from './matchWiring';
 import { getMap } from '../game/maps';
 import {
@@ -247,6 +248,7 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 
   namespace.on('connection', (socket: GameSocket) => {
     const limiter = new SocketRateLimiter();
+    const abuse = new AbuseTracker(socket.data.userId, socket.id);
     const { userId } = socket.data;
 
     logger.debug({ socketId: socket.id, userId }, 'socket connected');
@@ -287,6 +289,20 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
           }
 
           ack?.({ ok: false, code: appError.code, message: appError.message });
+
+          /*
+           * A rejected action is normal in ones and twos - a click at the wrong
+           * moment, a kill that arrived a tick after a meeting opened. Sustained
+           * rejection is a script probing for an unguarded action, and this is
+           * the only place that can tell the two apart.
+           */
+          if (abuse.recordRejection(appError.code)) {
+            socket.emit(SERVER_EVENT.ERROR, {
+              code: ErrorCode.RATE_LIMITED,
+              message: 'Too many rejected actions. Reconnect to continue.',
+            });
+            socket.disconnect(true);
+          }
         }
       })();
     }
@@ -458,8 +474,16 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
     /* ------------------------------------------------- gameplay - */
 
     socket.on('player:move', (input) => {
-      // No ack and no rate-limit wrapper: this fires 15 times a second and the
-      // sequence guard inside applyInput is the real protection.
+      /*
+       * No ack - this fires 15 times a second and an acknowledgement per input
+       * would cost more than the input is worth.
+       *
+       * It therefore also bypasses the acknowledged-handler wrapper and its
+       * rate limiter, which is why movement needs its own budget. Without one,
+       * a client could send ten thousand a second: the server would clamp each
+       * one's effect and still pay to parse every one of them.
+       */
+      if (!abuse.allowMovement()) return;
       handleMove(gameContext, userId, socket.data.roomId, input);
     });
 
@@ -558,6 +582,7 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 
     socket.on('disconnect', (reason) => {
       limiter.dispose();
+      abuse.dispose();
       logger.debug({ socketId: socket.id, userId, reason }, 'socket disconnected');
 
       const roomId = socket.data.roomId;
