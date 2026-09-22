@@ -2,15 +2,17 @@
 
 import {
   ACHIEVEMENTS,
+  DEFAULT_APPEARANCE,
   ACHIEVEMENT_ORDER,
   AVATAR_IDS,
-  AVATAR_LABELS,
   levelForXp,
   xpForLevel,
   type AchievementId,
+  type CharacterAppearance,
 } from '@voidline/shared';
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
-import { Avatar } from '@/components/brand/Avatar';
+import { PlayerCharacter } from '@/components/character';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -22,12 +24,33 @@ import { toast } from '@/stores/uiStore';
 import { PageHeader } from '@/components/layout/PageHeader';
 
 /**
+ * The customiser, split into its own chunk.
+ *
+ * It carries every roster, every palette and a preview of the whole
+ * character, and it is reached only when somebody taps Edit profile - so it
+ * has no business being in the bundle that renders the profile itself. The
+ * fetch happens on a deliberate tap, which is the right moment to spend one.
+ */
+const CharacterCustomiser = dynamic(
+  () => import('@/components/character').then((m) => m.CharacterCustomiser),
+  {
+    loading: () => (
+      <div className="grid h-64 place-items-center rounded-2xl border border-void-700 bg-void-850">
+        <p className="text-sm text-ink-muted">Opening the wardrobe…</p>
+      </div>
+    ),
+  },
+);
+
+/**
  * The player's own profile (§33).
  *
  * Every number here is read from the server-issued account. Nothing on this
- * screen can change a stat - the only editable fields are username and avatar,
- * and both go through `PATCH /api/users/me`, which accepts those two fields and
- * nothing else.
+ * screen can change a stat - the editable fields are username, uniform colour
+ * and the character itself, and all three go through `PATCH /api/users/me` in
+ * one request. The server validates every appearance slot against its own
+ * roster, exactly as it does an avatar id, so a cosmetic the client invented
+ * is refused rather than stored.
  */
 export function ProfileScreen() {
   const user = useSessionStore((s) => s.user);
@@ -36,9 +59,12 @@ export function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user?.username ?? '');
   const [avatar, setAvatar] = useState(user?.avatar ?? AVATAR_IDS[0]);
+  const [appearance, setAppearance] = useState<CharacterAppearance>(
+    user?.appearance ?? DEFAULT_APPEARANCE,
+  );
 
   const { pending, formError, fieldErrors, submit } = useFormSubmit(
-    async (input: { username: string; avatar: string }) => {
+    async (input: { username: string; avatar: string; appearance: CharacterAppearance }) => {
       const updated = await usersApi.updateMe(input);
       setUser(updated);
     },
@@ -54,7 +80,7 @@ export function ProfileScreen() {
   const unlocked = new Set<AchievementId>(user.achievements.map((a) => a.id));
 
   async function handleSave() {
-    if (await submit({ username, avatar })) {
+    if (await submit({ username, avatar, appearance })) {
       setEditing(false);
       toast.success('Profile updated.');
     }
@@ -63,6 +89,7 @@ export function ProfileScreen() {
   function startEditing() {
     setUsername(user!.username);
     setAvatar(user!.avatar);
+    setAppearance(user!.appearance);
     setEditing(true);
   }
 
@@ -88,28 +115,20 @@ export function ProfileScreen() {
         <section className="animate-rise rounded-2xl border border-void-700 bg-void-900 p-5 shadow-panel">
           {editing ? (
             <div className="flex flex-col gap-5">
-              <fieldset>
-                <legend className="mb-3 text-sm font-medium text-ink-muted">Suit colour</legend>
-                <div className="grid grid-cols-4 gap-2.5">
-                  {AVATAR_IDS.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setAvatar(id)}
-                      aria-pressed={avatar === id}
-                      aria-label={AVATAR_LABELS[id]}
-                      className={cn(
-                        'touch-target grid place-items-center rounded-xl border-2 p-1.5 transition-colors',
-                        avatar === id
-                          ? 'border-signal bg-void-850'
-                          : 'border-transparent hover:border-void-600',
-                      )}
-                    >
-                      <Avatar avatarId={id} className="size-full" />
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+              {/*
+               * Full character customisation (§AD), not a colour picker.
+               *
+               * It carries no save button of its own here - this screen
+               * already has one, and two save buttons on one form is a
+               * question the player should not have to answer. Appearance,
+               * avatar and username all go in a single PATCH.
+               */}
+              <CharacterCustomiser
+                value={appearance}
+                avatarId={avatar}
+                onChange={setAppearance}
+                onAvatarChange={setAvatar}
+              />
 
               <Input
                 label="Username"
@@ -141,10 +160,14 @@ export function ProfileScreen() {
           ) : (
             <>
               <div className="flex items-center gap-4">
-                <Avatar
+                <PlayerCharacter
+                  userId={user.id}
+                  username={user.username}
                   avatarId={user.avatar}
-                  name={`${user.username}'s avatar`}
-                  className="size-16"
+                  appearance={user.appearance}
+                  animated
+                  labelled
+                  className="size-20"
                 />
                 <div className="min-w-0 flex-1">
                   <h1 className="truncate font-display text-xl font-bold text-ink">

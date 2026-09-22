@@ -9,7 +9,7 @@ import {
 } from '@voidline/shared';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { Avatar } from '@/components/brand/Avatar';
+import { CharacterBust } from '@/components/character';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ROUTES } from '@/constants/routes';
@@ -106,7 +106,13 @@ export function JoinRoomForm() {
       <div className="flex flex-col gap-5 animate-rise">
         <div className="rounded-2xl border border-void-700 bg-void-850 p-4">
           <div className="flex items-start gap-3">
-            <Avatar avatarId={room.host.avatar} className="size-11" />
+            <CharacterBust
+              userId={room.host.id}
+              username={room.host.username}
+              avatarId={room.host.avatar}
+              appearance={room.host.appearance}
+              className="size-11"
+            />
             <div className="min-w-0 flex-1">
               <h2 className="truncate font-display text-lg font-bold text-ink">{room.name}</h2>
               <p className="truncate text-sm text-ink-muted">

@@ -1,5 +1,8 @@
 'use client';
 
+import { PlayerRole } from '@voidline/shared';
+import { ROLE_IDENTITY } from '@/lib/fiction';
+
 import {
   DEFAULT_MAP_ID,
   DEFAULT_ROOM_SETTINGS,
@@ -19,6 +22,15 @@ import { Input } from '@/components/ui/Input';
 import { ROUTES } from '@/constants/routes';
 import { useFormSubmit } from '@/hooks/useFormSubmit';
 import { roomsApi } from '@/services/rooms';
+
+/**
+ * The hostile faction, as the host reads it.
+ *
+ * Routed through the fiction layer rather than written here, so the room
+ * settings and the role reveal cannot end up calling the same thing by two
+ * different names. The wire field is still `saboteurCount`.
+ */
+const CATS = ROLE_IDENTITY[PlayerRole.SABOTEUR];
 
 /**
  * Create room (§11).
@@ -184,12 +196,12 @@ export function CreateRoomForm() {
         />
 
         <SettingRow
-          label="Saboteurs"
+          label={CATS.plural}
           description={`At most ${saboteurCeiling} for ${settings.maxPlayers} players — they must start outnumbered.`}
           control={
             <Stepper
               id="saboteur-count"
-              label="Saboteurs"
+              label={CATS.plural}
               value={settings.saboteurCount ?? 1}
               min={SETTINGS_BOUNDS.saboteurCount.min}
               max={saboteurCeiling}
@@ -297,7 +309,7 @@ export function CreateRoomForm() {
         />
         <SettingRow
           label="Confirm ejection"
-          description="Reveal whether the ejected player was a Saboteur."
+          description={`Reveal whether the ejected player was ${CATS.name.toLowerCase()}.`}
           control={
             <Toggle
               id="confirm-ejection"

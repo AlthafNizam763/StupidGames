@@ -29,6 +29,15 @@ import { PlayerRole, Team, WinReason } from '@voidline/shared';
 export interface RoleIdentity {
   /** What the role is called, in title case. */
   name: string;
+  /**
+   * The plural, for anywhere a count is being set or reported.
+   *
+   * "The Cat" does not pluralise by adding an s, and a room can be configured
+   * with up to three of them, so the two forms are written out rather than
+   * derived. A host setting that reads "The Cats: 2" is worse than one that
+   * reads "Cats: 2".
+   */
+  plural: string;
   /** Upper-case display form, for headings. */
   display: string;
   /** One line, second person, said at the moment of the reveal. */
@@ -48,6 +57,7 @@ export interface RoleIdentity {
 export const ROLE_IDENTITY: Readonly<Record<PlayerRole, RoleIdentity>> = {
   [PlayerRole.OPERATOR]: {
     name: 'Operator',
+    plural: 'Operators',
     display: 'OPERATOR',
     premise: 'You are crew. Keep ORBITAL-09 running.',
     objectives: [
@@ -59,6 +69,7 @@ export const ROLE_IDENTITY: Readonly<Record<PlayerRole, RoleIdentity>> = {
   },
   [PlayerRole.SABOTEUR]: {
     name: 'The Cat',
+    plural: 'Cats',
     display: 'THE CAT',
     premise: 'You are not crew. You are wearing one.',
     objectives: [

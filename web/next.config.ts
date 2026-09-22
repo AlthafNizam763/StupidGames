@@ -21,6 +21,25 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 
   /**
+   * Which files count as a route.
+   *
+   * The development-only review surfaces under `/design` are named
+   * `page.dev.tsx`, and `dev.tsx` is only a recognised page extension outside
+   * production. In a production build those files are not routes at all: the
+   * pages do not exist, their chunks are never emitted, and the sample
+   * fixtures they import are not in the bundle graph.
+   *
+   * This replaces an in-component `notFound()` guard, which was not good
+   * enough. It did hide the content - the gallery never rendered - but the
+   * route still existed, was still prerendered, and answered 200 with the
+   * not-found page rather than a 404. A dev tool that ships to production and
+   * returns 200 is a dev tool that ships to production.
+   */
+  pageExtensions: isProduction
+    ? ['tsx', 'ts', 'jsx', 'js']
+    : ['dev.tsx', 'tsx', 'ts', 'jsx', 'js'],
+
+  /**
    * `@voidline/shared` is a workspace package compiled to CommonJS. Listing it
    * here lets Next resolve and bundle it like first-party source instead of
    * treating it as an opaque external.

@@ -3,9 +3,8 @@
 import {
   PlayerRole,
   Team,
-
   xpForLevel,
-
+  type CharacterAppearance,
   type MatchPlayerResult,
   type MatchResult,
 } from '@voidline/shared';
@@ -138,7 +137,6 @@ export function MatchResults({ result, viewerId, onContinue, onRematch }: MatchR
                   player={player}
                   appearance={player.appearance}
                   isViewer={player.userId === viewerId}
-                  won={teamOf(player.role) === result.winner}
                 />
               ))}
           </ul>
@@ -173,12 +171,10 @@ function PlayerRow({
   player,
   appearance,
   isViewer,
-  won,
 }: {
   player: MatchPlayerResult;
   appearance: CharacterAppearance;
   isViewer: boolean;
-  won: boolean;
 }) {
   const identity = roleIdentity(player.role);
   const isCat = player.role === PlayerRole.SABOTEUR;
@@ -219,7 +215,15 @@ function PlayerRow({
         <Badge tone={isCat ? 'alert' : 'signal'} className={cn(isCat && 'border-cat/40 bg-cat-glow text-cat')}>
           {identity.display}
         </Badge>
-        <span className={cn('text-xs', won ? 'text-signal' : 'text-ink-faint')}>
+        {/*
+         * Coloured by survival, not by which side won.
+         *
+         * Tying the colour to `won` produced "Eliminated" in green for a
+         * winning player, which reads as a contradiction. Who won is already
+         * carried by the headline and by the order of this list; this line
+         * answers a different question.
+         */}
+        <span className={cn('text-xs', player.survived ? 'text-signal' : 'text-ink-faint')}>
           {player.survived ? 'Survived' : 'Eliminated'}
         </span>
       </div>

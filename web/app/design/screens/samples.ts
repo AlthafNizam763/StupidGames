@@ -10,6 +10,8 @@ import {
   Team,
   VotingOutcome,
   WinReason,
+  PuzzleKind,
+  TaskType,
   ZoneId,
   deriveAppearance,
   type ChatMessage,
@@ -17,6 +19,7 @@ import {
   type GameSnapshot,
   type MatchResult,
   type PublicPlayerState,
+  type TaskPuzzle,
   type VotingResult,
 } from '@voidline/shared';
 
@@ -24,7 +27,9 @@ import {
  * Sample payloads for the development preview harness.
  *
  * DEVELOPMENT ONLY. Nothing here is imported by anything under
- * `components/`, and every page that uses it answers 404 in production.
+ * `components/`, and the pages that use it are named `page.dev.tsx` - an
+ * extension that only counts as a route outside production - so in a
+ * production build this file is not in the bundle graph at all.
  *
  * These exist because the council, the HUD and the results screen cannot be
  * reached without a running server, a database and seven other people. The
@@ -253,12 +258,24 @@ export function sampleResult(winner: Team): MatchResult {
       const isCat = member.id === catId;
       const won = (winner === Team.SABOTEURS) === isCat;
 
+      /*
+       * Survival has to agree with the result.
+       *
+       * The first version of this marked the Cat as eliminated in a match the
+       * Cat won, which cannot happen - ejecting the Cat is how the crew wins -
+       * and it made the results screen look like it had a bug when the bug
+       * was in the fixture. A fixture that contradicts the rules tests
+       * nothing and wastes a review pass.
+       */
+      const survived = isCat ? winner === Team.SABOTEURS : index % 3 !== 2;
+
       return {
         userId: member.id,
         username: member.name,
         avatar: member.avatar,
+        appearance: deriveAppearance(member.id),
         role: isCat ? PlayerRole.SABOTEUR : PlayerRole.OPERATOR,
-        survived: index % 3 !== 2,
+        survived,
         objectivesCompleted: isCat ? 0 : 4 + index,
         eliminations: isCat ? 3 : 0,
         xpEarned: won ? 250 : 90,
@@ -278,4 +295,65 @@ export function sampleResult(winner: Team): MatchResult {
       };
     }),
   };
+}
+
+/* --------------------------------------------------------- objectives - */
+
+/**
+ * One puzzle of each shape, matching what `TaskManager.generatePuzzle`
+ * actually produces: ALIGN targets are integers 0-99, ORDER options are
+ * scrambled two-digit uniques, SELECT offers three times as many options as
+ * it asks for.
+ */
+export function samplePuzzle(kind: PuzzleKind): TaskPuzzle {
+  switch (kind) {
+    case PuzzleKind.ORDER:
+      return {
+        taskId: 'preview-order',
+        type: TaskType.SIGNAL_ROUTING,
+        step: 0,
+        steps: 1,
+        prompt: {
+          kind: PuzzleKind.ORDER,
+          slots: 5,
+          options: [62, 17, 93, 41, 28],
+          duration: 10,
+          minimumSeconds: 1.3,
+        },
+      };
+
+    case PuzzleKind.SELECT:
+      return {
+        taskId: 'preview-select',
+        type: TaskType.SECURITY_SCAN,
+        step: 0,
+        steps: 1,
+        prompt: {
+          kind: PuzzleKind.SELECT,
+          slots: 4,
+          options: [52, 96, 11, 70, 37, 88, 24, 63, 45, 81, 58, 77],
+          // Four of the twelve are at or above it, as the server guarantees.
+          reference: 70,
+          duration: 9,
+          minimumSeconds: 1.04,
+        },
+      };
+
+    case PuzzleKind.ALIGN:
+    default:
+      return {
+        taskId: 'preview-align',
+        type: TaskType.REACTOR_CALIBRATION,
+        step: 1,
+        steps: 2,
+        prompt: {
+          kind: PuzzleKind.ALIGN,
+          slots: 4,
+          options: [],
+          targets: [18, 64, 37, 91],
+          duration: 8,
+          minimumSeconds: 1.04,
+        },
+      };
+  }
 }

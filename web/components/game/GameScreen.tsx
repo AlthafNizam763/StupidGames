@@ -1,21 +1,43 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import {
   GamePhase,
   type SabotageType,
-  type Vec2,
+
 } from '@voidline/shared';
 import { ROUTES } from '@/constants/routes';
 import { toast } from '@/stores/uiStore';
+import { useProximity } from '@/hooks/useProximity';
+import type { Engine } from '@/game/engine/Engine';
 import { useGameStore } from '@/stores/gameStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { GameCanvas } from './GameCanvas';
 import { CouncilScreen } from './CouncilScreen';
 import { GameHud } from './GameHud';
-import { MatchResults } from './MatchResults';
 import { RoleReveal } from './RoleReveal';
+import { TaskPanel } from './tasks/TaskPanel';
+
+/**
+ * The results screen, split into its own chunk.
+ *
+ * It is reached once, at the end of a match, and it pulls in the Cat artwork
+ * and the XP panel - none of which is needed while anybody is playing. The
+ * fetch happens at the one moment in the match with no time pressure at all.
+ *
+ * `RoleReveal` is deliberately NOT split. It renders during STARTING with
+ * about five seconds of budget, and a chunk arriving late there would mean
+ * the reveal lands after the match has already begun.
+ */
+const MatchResults = dynamic(() => import('./MatchResults').then((m) => m.MatchResults), {
+  loading: () => (
+    <main className="station-backdrop min-h-screen-safe grid place-items-center px-safe">
+      <p className="text-sm text-ink-muted">Counting up…</p>
+    </main>
+  ),
+});
 
 /**
  * The match screen.
@@ -42,6 +64,7 @@ export function GameScreen({ code }: { code: string }) {
   const chat = useGameStore((s) => s.chat);
   const result = useGameStore((s) => s.result);
   const votingResult = useGameStore((s) => s.votingResult);
+  const puzzle = useGameStore((s) => s.puzzle);
 
   const subscribe = useGameStore((s) => s.subscribe);
   const resume = useGameStore((s) => s.resume);
@@ -65,44 +88,41 @@ export function GameScreen({ code }: { code: string }) {
   }, [subscribe, resume]);
 
   /*
-   * PROXIMITY, and its known limitation.
+   * PROXIMITY, from the engine rather than from the snapshot.
    *
-   * These pick the nearest candidate from the last `game:state` snapshot,
-   * which is event-driven - positions in it can be a second or more stale,
-   * because live movement goes straight to the canvas on `game:delta` and
-   * deliberately never enters the store.
+   * The engine owns the authoritative local positions; `game:state` carries
+   * positions that can be a second stale, because live movement goes straight
+   * to the canvas on `game:delta` and deliberately never enters the store.
+   * Targeting off the snapshot worked but showed Eliminate as available while
+   * standing alone in a corridor.
    *
-   * That is good enough to *choose* a target and not good enough to *gate*
-   * one, so nothing here is disabled on distance: the server re-checks range
-   * on every action and answers OUT_OF_RANGE, which is surfaced as a readable
-   * message rather than swallowed. The right fix is a proximity hook on the
-   * engine, which owns the authoritative local positions.
+   * It still decides nothing. `nearest` reads public world state only - it
+   * knows nothing about roles, cooldowns or whose objective a terminal is -
+   * and the server re-checks range on every action. An action offered here
+   * can still be refused, and the refusal is surfaced as a message.
    */
-  const me = snapshot?.players.find((player) => player.id === self?.self.id) ?? null;
+  const [engine, setEngine] = useState<Engine | null>(null);
+  const proximity = useProximity(engine, snapshot?.phase === GamePhase.PLAYING);
 
-  const nearestPlayerId = useMemo(() => {
-    if (!snapshot || !me || !me.alive) return null;
-    return nearestBy(
-      snapshot.players.filter((player) => player.id !== me.id && player.alive),
-      me.position,
-      (player) => player.position,
-    )?.id ?? null;
-  }, [snapshot, me]);
+  const nearestPlayerId = self?.self.alive ? (proximity.player?.id ?? null) : null;
+  const nearestBodyId = proximity.body?.id ?? null;
 
-  const nearestBodyId = useMemo(() => {
-    if (!snapshot || !me) return null;
-    return nearestBy(
-      snapshot.bodies.filter((body) => !body.reported),
-      me.position,
-      (body) => body.position,
-    )?.id ?? null;
-  }, [snapshot, me]);
+  /**
+   * The objective at the terminal being stood on, if it is one of yours.
+   *
+   * Matching the terminal to the assignment is what makes Interact mean
+   * something: standing at Reactor with no reactor objective should offer
+   * nothing, rather than offering to start a task somewhere else entirely.
+   */
+  const interactableTaskId = useMemo(() => {
+    const terminalId = proximity.terminal?.id;
+    if (!terminalId || !self) return null;
 
-  /** The first objective still to do. Range is the server's business. */
-  const nextTaskId = useMemo(
-    () => self?.tasks.find((task) => task.status !== 'COMPLETE')?.id ?? null,
-    [self],
-  );
+    return (
+      self.tasks.find((task) => task.terminalId === terminalId && task.status !== 'COMPLETE')?.id ??
+      null
+    );
+  }, [proximity.terminal?.id, self]);
 
   /** Runs a server action, turning a rejection into something readable. */
   async function run(label: string, action: () => Promise<unknown>) {
@@ -118,6 +138,17 @@ export function GameScreen({ code }: { code: string }) {
   }
 
   const store = useGameStore.getState;
+
+  /**
+   * Shuts the objective panel.
+   *
+   * Closing is purely local - the server has no notion of a panel being open,
+   * only of steps submitted - so this clears the store's copy directly rather
+   * than round-tripping. Re-opening the terminal issues a fresh puzzle.
+   */
+  function closeTask() {
+    useGameStore.setState({ puzzle: null });
+  }
 
   /* ------------------------------------------------------------ gates - */
 
@@ -155,7 +186,7 @@ export function GameScreen({ code }: { code: string }) {
        * it would tear down the engine and reload the map every meeting.
        */}
       <div className={inCouncil ? 'invisible absolute inset-0' : 'absolute inset-0'}>
-        <GameCanvas />
+        <GameCanvas onEngineReady={setEngine} />
       </div>
 
       {inCouncil ? (
@@ -175,7 +206,7 @@ export function GameScreen({ code }: { code: string }) {
           self={self}
           nearestPlayerId={nearestPlayerId}
           nearestBodyId={nearestBodyId}
-          interactableTaskId={nextTaskId}
+          interactableTaskId={interactableTaskId}
           busy={busy}
           onInteract={(taskId) =>
             void run('Cannot use that terminal', () => store().startTask(taskId))
@@ -192,6 +223,19 @@ export function GameScreen({ code }: { code: string }) {
         />
       )}
 
+      {/*
+       * An open objective. Not lazy-loaded: it opens mid-match against the
+       * puzzle's own time budget, which is no place for a cold chunk fetch.
+       */}
+      {puzzle ? (
+        <TaskPanel
+          key={`${puzzle.taskId}:${puzzle.step}`}
+          puzzle={puzzle}
+          onSubmit={(values, elapsedMs) => store().submitStep(values, elapsedMs)}
+          onClose={closeTask}
+        />
+      ) : null}
+
       {showReveal ? (
         <RoleReveal
           role={self.self.role}
@@ -204,23 +248,4 @@ export function GameScreen({ code }: { code: string }) {
       ) : null}
     </main>
   );
-}
-
-/* -------------------------------------------------------------- helper - */
-
-/** The closest item to a point, or null when the list is empty. */
-function nearestBy<T>(items: readonly T[], from: Vec2, positionOf: (item: T) => Vec2): T | null {
-  let best: T | null = null;
-  let bestDistance = Infinity;
-
-  for (const item of items) {
-    const position = positionOf(item);
-    const distance = (position.x - from.x) ** 2 + (position.y - from.y) ** 2;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = item;
-    }
-  }
-
-  return best;
 }

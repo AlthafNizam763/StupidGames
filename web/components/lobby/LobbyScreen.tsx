@@ -9,7 +9,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Avatar } from '@/components/brand/Avatar';
+import { CharacterBust } from '@/components/character';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, StatusDot } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -64,7 +64,18 @@ function PlayerRow({
           : 'border-void-700/60 bg-void-900/60',
       )}
     >
-      <Avatar avatarId={player.avatar} className="size-10" />
+      {/*
+       * The crew member, not a suit icon. Everyone in this list is someone
+       * you are about to have to read, so the lobby should be where you
+       * start learning what they look like.
+       */}
+      <CharacterBust
+        userId={player.userId}
+        username={player.username}
+        avatarId={player.avatar}
+        appearance={player.appearance}
+        className="size-11"
+      />
 
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 truncate text-[0.9375rem] font-medium text-ink">

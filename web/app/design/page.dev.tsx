@@ -21,8 +21,9 @@ import {
 /**
  * The design system gallery.
  *
- * Development only - `notFound()` in production, so it is never a route a
- * player can reach.
+ * Development only. The file is `page.dev.tsx`, which is a route only outside
+ * production, so this does not exist in a production build - the `notFound()`
+ * below is a second lock on the same door, not the door.
  *
  * It exists because hand-authored SVG is not reviewable as source. A path
  * either looks like a character or it does not, and the only way to find out

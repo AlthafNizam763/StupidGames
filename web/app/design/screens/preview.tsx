@@ -9,6 +9,7 @@ import {
   deriveAppearance,
   GamePhase,
   PlayerRole,
+  PuzzleKind,
   Team,
   type CharacterAppearance,
   type GameSnapshot,
@@ -17,15 +18,18 @@ import {
 import { CharacterCustomiser } from '@/components/character';
 import { CouncilScreen } from '@/components/game/CouncilScreen';
 import { MatchResults } from '@/components/game/MatchResults';
+import { TaskPanel } from '@/components/game/tasks/TaskPanel';
 import {
   SAMPLE_CHAT,
   SAMPLE_VOTING_RESULT,
   VIEWER_ID,
   sampleResult,
+  samplePuzzle,
   sampleSelf,
   sampleSnapshot,
 } from './samples';
 import { HomeScreen } from '@/components/home/HomeScreen';
+import { ProfileScreen } from '@/components/profile/ProfileScreen';
 import { useSessionStore } from '@/stores/sessionStore';
 
 /**
@@ -154,14 +158,30 @@ function ResultsPreview({ winner }: { winner: Team }) {
   return <MatchResults result={sampleResult(winner)} viewerId={VIEWER_ID} onContinue={() => undefined} />;
 }
 
+function TaskPreview({ kind }: { kind: PuzzleKind }) {
+  return (
+    <main className="station-backdrop min-h-screen-safe">
+      <TaskPanel
+        puzzle={samplePuzzle(kind)}
+        onSubmit={async () => null}
+        onClose={() => undefined}
+      />
+    </main>
+  );
+}
+
 const SCREENS = {
   home: HomeScreen,
   customise: CustomiseScreen,
+  profile: ProfileScreen,
   council: () => <CouncilPreview phase={GamePhase.COUNCIL} />,
   voting: () => <CouncilPreview phase={GamePhase.VOTING} />,
   ejection: () => <CouncilPreview phase={GamePhase.EJECTION} />,
   'results-crew': () => <ResultsPreview winner={Team.OPERATORS} />,
   'results-cat': () => <ResultsPreview winner={Team.SABOTEURS} />,
+  'task-align': () => <TaskPreview kind={PuzzleKind.ALIGN} />,
+  'task-order': () => <TaskPreview kind={PuzzleKind.ORDER} />,
+  'task-select': () => <TaskPreview kind={PuzzleKind.SELECT} />,
 } as const;
 
 
