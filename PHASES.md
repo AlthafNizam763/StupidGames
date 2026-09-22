@@ -12,8 +12,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 6 | Room creation and joining | **done** |
 | 7 | Lobby | **done** |
 | 8 | Socket.IO architecture | partly done — see Phase 7 |
-| 9 | Canvas game engine | |
-| 10 | Map + collision | |
+| 9 | Canvas game engine | **done** |
+| 10 | Map + collision | next |
 | 11 | Player movement | |
 | 12 | Role system | |
 | 13 | Objectives | |
@@ -261,3 +261,40 @@ The live lobby, and the socket layer underneath it.
 **A disconnect only counts when the player's last socket goes.** Another tab may still be connected; releasing the seat because one of them closed would eject someone who is still playing.
 
 **`room:start` validates everything and then says what is missing.** Every precondition — host, phase, connected count, readiness — is real and enforced, and the host sees the blocking reason next to a disabled button rather than discovering it by pressing. With all checks passed, the server reports that the match engine is not built rather than moving the room into a phase nothing can advance, which would strand everyone on a "starting" screen. Phase 12 replaces one line; nothing above it changes.
+
+## Phase 9 — what was built
+
+The Canvas game engine (§8, §41), and the mobile controls that drive it (§7).
+
+*Phase 8's remainder — gameplay socket events and the Redis adapter — is still outstanding and was skipped over. Phase 9 is purely client-side rendering, so it did not block.*
+
+**Engine** (`web/game/`)
+- `GameLoop`: fixed-timestep simulation with variable-rate rendering, an accumulator capped against death spirals, and an interpolation alpha for the renderer.
+- `Engine`: owns the world, loop, input and renderer. The boundary React does not cross.
+- `InputManager`: keyboard and joystick normalised into one snapshot, reused each frame.
+- `Renderer`: DPR-aware canvas sizing, camera transform, culled floor/obstacle/entity passes, and an Operator sprite matching the avatar silhouette.
+- `Camera`: damped follow, framerate-independent, clamped to the world and scaled from the smaller viewport axis.
+- `collision/resolve`: circle-against-rectangle with shortest-axis ejection, so sliding along a wall falls out naturally.
+- `MovementSystem`: the integration the server will mirror in Phase 11.
+
+**React bridge**
+- `GameCanvas` holds the engine in a *ref*, not state. The only per-second setState is the stats readout.
+- `VirtualJoystick`: floating origin, dead zone, pointer capture, `touch-action: none`, and honouring the player's control-position and sensitivity settings.
+
+**Verification**: 41 new client-side tests (166 total across both workspaces) — the first tests in the web workspace.
+
+## Decisions made in Phase 9
+
+**Fixed timestep, not per-frame delta.** Integrating against a variable frame time means a 30fps phone takes steps twice as large, which lets a player tunnel through a wall and makes the same input produce different movement on different hardware. Every step is identical; there is a test asserting that across deliberately irregular frames.
+
+**The accumulator is capped at five steps.** After a long stall the honest catch-up could be hundreds of steps, and running them would freeze the page far longer than the stall did. Time is dropped instead — the server is authoritative and its next snapshot corrects anything that matters.
+
+**React never sees a position.** The engine lives in a ref and mutates plain objects in place. A `setState` per frame would spend more time diffing a tree than drawing the game, which on a mid-range phone is the difference between playable and not.
+
+**The camera scales from the smaller viewport axis.** Scaling from width would let a wide monitor see players a phone cannot — not a cosmetic difference in a game about who saw whom.
+
+**Device pixel ratio is capped at 2.** Beyond that the pixel count grows quadratically for a difference almost nobody can see, on exactly the devices that can least afford it.
+
+**Diagonal movement is normalised.** Holding W and D otherwise gives a vector of length 1.41 and a player who moves 41% faster diagonally — and the server's speed check would reject it as a hack.
+
+**The joystick has a floating origin.** It appears where the thumb lands rather than at a fixed point, so nobody has to find it by feel while playing.

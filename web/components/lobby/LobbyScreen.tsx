@@ -6,6 +6,7 @@ import {
   MIN_PLAYERS_TO_START,
   type LobbyPlayer,
 } from '@voidline/shared';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/brand/Avatar';
@@ -304,16 +305,10 @@ export function LobbyScreen({ code }: { code: string }) {
           </dl>
 
           {isHost ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              fullWidth
-              className="mt-3"
-              onClick={() => router.push(ROUTES.createRoom)}
-              disabled
-            >
-              Change settings — editing lands with the match engine
-            </Button>
+            <p className="mt-3 text-sm text-ink-faint">
+              Settings can be changed over the wire, but the host-side editing form is not built
+              yet.
+            </p>
           ) : null}
         </section>
 
@@ -369,6 +364,19 @@ export function LobbyScreen({ code }: { code: string }) {
               </Button>
             </>
           )}
+
+          {/*
+           * The engine runs, the match does not. Until room:start can begin one
+           * (Phase 12), this is how the rendering, input and collision work
+           * built in Phase 9 is actually reachable - labelled as a preview so
+           * nobody mistakes it for the game.
+           */}
+          <Link
+            href={ROUTES.game(room.code)}
+            className="touch-target inline-flex items-center justify-center rounded-xl text-sm text-ink-faint underline-offset-4 transition-colors hover:text-ink-muted hover:underline"
+          >
+            Open engine preview
+          </Link>
         </div>
       </div>
     </main>
