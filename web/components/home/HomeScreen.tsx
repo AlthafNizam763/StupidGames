@@ -4,7 +4,7 @@ import { levelForXp, xpForLevel } from '@voidline/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
-import { Avatar } from '@/components/brand/Avatar';
+import { PlayerCharacter, uniformColour } from '@/components/character';
 import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/Button';
 import { ROUTES } from '@/constants/routes';
@@ -175,12 +175,37 @@ export function HomeScreen() {
       </header>
 
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 py-6">
-        <section className="animate-rise rounded-2xl border border-void-700 bg-void-900 p-5 shadow-panel">
+        <section className="animate-rise relative overflow-hidden rounded-2xl border border-void-700 bg-void-900 p-5 shadow-panel">
+          {/*
+           * A wash of the player's own uniform colour behind their character.
+           * Colour is identity in this game - it is how people refer to each
+           * other out loud - so the home screen should establish it before the
+           * match does.
+           */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -top-16 -left-10 size-48 rounded-full opacity-[0.07] blur-2xl"
+            style={{ backgroundColor: uniformColour(user.avatar) }}
+          />
+
           <Link
             href={ROUTES.profile}
-            className="flex items-center gap-4 rounded-xl transition-opacity hover:opacity-90"
+            className="relative flex items-center gap-4 rounded-xl transition-opacity hover:opacity-90"
           >
-            <Avatar avatarId={user.avatar} name={`${user.username}'s avatar`} className="size-14" />
+            {/*
+             * The player's actual character, not a suit icon. This is the
+             * figure everybody else will see on the map, so it is the figure
+             * they should recognise here.
+             */}
+            <PlayerCharacter
+              userId={user.id}
+              username={user.username}
+              avatarId={user.avatar}
+              appearance={user.appearance}
+              expression="HAPPY"
+              animated
+              className="size-20 shrink-0"
+            />
             <div className="min-w-0 flex-1">
               <h1 className="truncate font-display text-xl font-bold text-ink">{user.username}</h1>
               <p className="text-sm text-ink-muted">

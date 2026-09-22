@@ -30,7 +30,26 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'X-Frame-Options', value: 'DENY' },
+          /*
+           * Clickjacking protection. `DENY` in production, and that is the
+           * value that ships.
+           *
+           * In development it is relaxed to `SAMEORIGIN` so the responsive
+           * review harness at /design/viewports can frame the application at
+           * 320-1280px and check every breakpoint in one pass (§BJ). Chrome
+           * refuses to open a window narrower than 500px, so an iframe is the
+           * only way to obtain a true 320px layout viewport - and under
+           * `DENY` a page cannot be framed even by itself.
+           *
+           * The relaxation is tied to NODE_ENV rather than to a path, because
+           * the harness has to frame the real screens - /login, /home, the
+           * lobby - not only the pages under /design. A production build
+           * never evaluates this branch.
+           */
+          {
+            key: 'X-Frame-Options',
+            value: process.env.NODE_ENV === 'production' ? 'DENY' : 'SAMEORIGIN',
+          },
           // The game owns the whole viewport; nothing here needs these.
           {
             key: 'Permissions-Policy',

@@ -764,7 +764,8 @@ describe('council, chat and voting', () => {
     openVoting(match);
 
     const result = castVote(match, voter, match.meeting!.id, target.userId);
-    const vote = (result as { vote: Record<string, unknown> }).vote;
+    assert.equal(result.ok, true);
+    const vote = (result as unknown as { vote: Record<string, unknown> }).vote;
 
     // Absent, not present-and-hidden. The client is never sent a value it is
     // trusted to conceal.

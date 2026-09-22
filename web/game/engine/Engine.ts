@@ -2,9 +2,10 @@ import { createWorld, getLocalEntity, loadMap, spawnEntity, spawnPointFor, zoneA
 import { InputManager } from '../input/InputManager';
 import { Renderer } from '../rendering/Renderer';
 import { applyInput, stepEntity } from '../systems/MovementSystem';
+import { NetworkSync } from '../systems/NetworkSync';
 import { GameLoop } from './GameLoop';
 import type { EngineStats, World } from './types';
-import type { MapData, ZoneId } from '@voidline/shared';
+import type { GameSnapshot, MapData, MovementDelta, ZoneId } from '@voidline/shared';
 
 /**
  * The engine.
@@ -33,6 +34,16 @@ export class Engine {
   readonly world: World = createWorld();
   readonly input = new InputManager();
   readonly renderer = new Renderer();
+  readonly network = new NetworkSync();
+
+  /**
+   * Where movement intent goes.
+   *
+   * Set by the React bridge to the socket emitter. Null in the engine preview,
+   * where the loop runs with no server - which is why this is optional rather
+   * than a constructor dependency.
+   */
+  private sendInput: ((payload: unknown) => void) | null = null;
 
   private readonly loop: GameLoop;
   private readonly canvas: HTMLCanvasElement;
@@ -121,6 +132,21 @@ export class Engine {
     return local ? zoneAt(this.world, local.position.x, local.position.y) : null;
   }
 
+  /** Connects the engine to the network. Without it the engine runs offline. */
+  setInputSender(send: ((payload: unknown) => void) | null): void {
+    this.sendInput = send;
+  }
+
+  /** Applies a full server snapshot. */
+  applySnapshot(snapshot: GameSnapshot, localId: string | null): void {
+    this.network.applySnapshot(this.world, snapshot, localId);
+  }
+
+  /** Applies a positional delta. Called ten times a second, outside React. */
+  applyDelta(delta: MovementDelta, localId: string | null): void {
+    this.network.applyDelta(this.world, delta, localId);
+  }
+
   applySettings(settings: { showPlayerNames: boolean; visualEffects: boolean }): void {
     this.renderer.showNames = settings.showPlayerNames;
     this.renderer.effectsEnabled = settings.visualEffects;
@@ -130,18 +156,27 @@ export class Engine {
 
   private update(dt: number): void {
     const local = getLocalEntity(this.world);
+    const snapshot = this.input.read();
 
     if (local) {
-      applyInput(local, this.input.read());
-    }
+      applyInput(local, snapshot);
 
-    for (const entity of this.world.entities.values()) {
-      stepEntity(entity, this.world, dt);
-    }
+      /*
+       * Intent goes to the server at a fixed rate, not per tick. The server
+       * integrates it; this client predicts the same motion locally so the
+       * player moves on keypress rather than after a round trip.
+       */
+      const payload = this.network.buildInput(snapshot, performance.now());
+      if (payload && this.sendInput) this.sendInput(payload);
 
-    if (local) {
+      // Only the local player is simulated here. Remote players are
+      // interpolated toward server positions instead - their input is not
+      // known, so predicting them would be inventing it.
+      stepEntity(local, this.world, dt);
       this.renderer.camera.follow(local.position, dt, this.world);
     }
+
+    this.network.interpolateRemotes(this.world, dt);
   }
 
   private syncSize(): void {

@@ -1,4 +1,6 @@
+import { PlayerRole } from '@voidline/shared';
 import { Logo } from '@/components/brand/Logo';
+import { roleIdentity } from '@/lib/fiction';
 import { UplinkGate } from '@/components/splash/UplinkGate';
 
 /**
@@ -11,16 +13,24 @@ import { UplinkGate } from '@/components/splash/UplinkGate';
  * interactive island (§1).
  */
 
+/*
+ * The two sides, named the way a player hears them.
+ *
+ * `ROLE_IDENTITY` is the only place a protocol role becomes words on a screen
+ * (see lib/fiction.ts). The wire still says SABOTEUR; the player reads THE
+ * CAT. No screen, including this one, is allowed to write either name by
+ * hand - that is how two vocabularies start drifting apart.
+ */
 const FACTIONS = [
   {
-    name: 'Operators',
+    role: PlayerRole.OPERATOR,
     tone: 'text-signal',
     line: 'Keep ORBITAL-09 running. Complete station objectives, watch the crew, and work out who is lying before there are too few of you left to matter.',
   },
   {
-    name: 'Saboteurs',
-    tone: 'text-alert',
-    line: 'You look exactly like an Operator. Eliminate the crew quietly, drive the facility toward critical failure, and make sure someone else takes the blame.',
+    role: PlayerRole.SABOTEUR,
+    tone: 'text-cat',
+    line: 'You look exactly like the rest of the crew, because that is what they see. Eliminate them quietly, drive the facility toward critical failure, and make sure somebody else takes the blame.',
   },
 ] as const;
 
@@ -50,11 +60,11 @@ export default function SplashPage() {
         <h2 className="sr-only">The two factions</h2>
         <ul className="flex flex-col gap-4">
           {FACTIONS.map((faction) => (
-            <li key={faction.name}>
+            <li key={faction.role}>
               <h3
                 className={`font-display text-xs font-bold tracking-[0.25em] uppercase ${faction.tone}`}
               >
-                {faction.name}
+                {roleIdentity(faction.role).name}
               </h3>
               <p className="mt-1.5 text-sm leading-relaxed text-ink-faint">{faction.line}</p>
             </li>
