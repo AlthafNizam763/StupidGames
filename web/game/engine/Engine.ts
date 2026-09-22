@@ -1,9 +1,10 @@
-import { createWorld, defaultSpawn, getLocalEntity, spawnEntity } from '../entities/World';
+import { createWorld, getLocalEntity, loadMap, spawnEntity, spawnPointFor, zoneAt } from '../entities/World';
 import { InputManager } from '../input/InputManager';
 import { Renderer } from '../rendering/Renderer';
 import { applyInput, stepEntity } from '../systems/MovementSystem';
 import { GameLoop } from './GameLoop';
 import type { EngineStats, World } from './types';
+import type { MapData, ZoneId } from '@voidline/shared';
 
 /**
  * The engine.
@@ -83,11 +84,41 @@ export class Engine {
     this.renderer.detach();
   }
 
+  /**
+   * Loads the server-authored map.
+   *
+   * Safe to call after the loop has started: the world is usable while the map
+   * request is in flight, and this fills it in when the data arrives. Any
+   * player already spawned is moved to a real spawn point, since the fallback
+   * they were given was the centre of an empty world.
+   */
+  loadMap(map: MapData): void {
+    loadMap(this.world, map);
+
+    const local = getLocalEntity(this.world);
+    if (local) {
+      const spawn = spawnPointFor(this.world, 0);
+      local.position.x = spawn.x;
+      local.position.y = spawn.y;
+      local.previous.x = spawn.x;
+      local.previous.y = spawn.y;
+      local.render.x = spawn.x;
+      local.render.y = spawn.y;
+      this.renderer.camera.snapTo(spawn);
+    }
+  }
+
   /** Places the player this client controls and centres the camera on them. */
   spawnLocalPlayer(id: string, username: string, avatarId: string): void {
-    const spawn = defaultSpawn(this.world);
+    const spawn = spawnPointFor(this.world, 0);
     spawnEntity(this.world, { id, username, avatarId, ...spawn, isLocal: true });
     this.renderer.camera.snapTo(spawn);
+  }
+
+  /** The room the local player is standing in, for the HUD. */
+  localZone(): ZoneId | null {
+    const local = getLocalEntity(this.world);
+    return local ? zoneAt(this.world, local.position.x, local.position.y) : null;
   }
 
   applySettings(settings: { showPlayerNames: boolean; visualEffects: boolean }): void {

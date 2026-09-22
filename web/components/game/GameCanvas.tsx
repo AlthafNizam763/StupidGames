@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Engine } from '@/game/engine/Engine';
 import type { EngineStats } from '@/game/engine/types';
+import { DEFAULT_MAP_ID, ZONE_LABELS, type ZoneId } from '@voidline/shared';
+import { mapsApi } from '@/services/maps';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { VirtualJoystick } from './VirtualJoystick';
@@ -30,6 +32,8 @@ export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
 
   const [stats, setStats] = useState<EngineStats | null>(null);
   const [failed, setFailed] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [zone, setZone] = useState<ZoneId | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,7 +54,34 @@ export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
     engine.spawnLocalPlayer(user.id, user.username, user.avatar);
     engineRef.current = engine;
 
+    /*
+     * The map is fetched after the loop is already running. Blocking on the
+     * request would mean a black screen on a slow connection; instead the
+     * engine renders an empty hull and fills in when the data lands.
+     */
+    let cancelled = false;
+    void mapsApi
+      .get(DEFAULT_MAP_ID)
+      .then((map) => {
+        if (!cancelled) engine.loadMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setMapError('Could not load the station layout.');
+      });
+
+    /*
+     * The current room is polled rather than pushed. It changes at walking
+     * pace, so twice a second is imperceptibly behind - and it keeps the
+     * engine from calling setState, which is the rule this whole design rests
+     * on.
+     */
+    const zoneTimer = setInterval(() => {
+      if (!cancelled) setZone(engine.localZone());
+    }, 500);
+
     return () => {
+      cancelled = true;
+      clearInterval(zoneTimer);
       engine.stop();
       engineRef.current = null;
     };
@@ -113,6 +144,22 @@ export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
           className="pointer-events-auto"
         />
       </div>
+
+      {zone ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-3 pt-safe">
+          <span className="rounded-full border border-void-600 bg-void-900/90 px-3 py-1 text-xs font-medium tracking-[0.2em] text-ink-muted uppercase">
+            {ZONE_LABELS[zone]}
+          </span>
+        </div>
+      ) : null}
+
+      {mapError ? (
+        <div className="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center p-3">
+          <span role="alert" className="rounded-xl border border-alert/40 bg-alert-glow px-3 py-2 text-sm text-ink">
+            {mapError}
+          </span>
+        </div>
+      ) : null}
 
       {showStats && stats ? (
         <div className="pointer-events-none absolute left-2 top-2 z-10 rounded-lg bg-void-950/80 px-2 py-1 font-mono text-xs text-ink-muted tabular-nums">

@@ -6,4 +6,5 @@ export * from './task';
 export * from './sabotage';
 export * from './meeting';
 export * from './game';
+export * from './map';
 export * from './match';

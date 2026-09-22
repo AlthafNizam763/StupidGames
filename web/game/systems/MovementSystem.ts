@@ -1,6 +1,6 @@
 import { AnimationState, Facing, PLAYER_BASE_SPEED } from '@voidline/shared';
 import { clampToBounds, resolveCircleRect, type Circle } from '../collision/resolve';
-import type { Entity, InputSnapshot, World } from '../engine/types';
+import type { Entity, InputSnapshot, Rect, World } from '../engine/types';
 
 /**
  * Movement and collision, one fixed step.
@@ -16,6 +16,9 @@ import type { Entity, InputSnapshot, World } from '../engine/types';
 
 /** Reused across calls. One allocation for the life of the module, not one per tick. */
 const scratch: Circle = { x: 0, y: 0, radius: 0 };
+
+/** Broadphase results, reused for the same reason. */
+const nearby: Rect[] = [];
 
 export function applyInput(entity: Entity, input: InputSnapshot): void {
   if (!entity.alive) {
@@ -47,11 +50,23 @@ export function stepEntity(entity: Entity, world: World, dt: number): void {
     scratch.radius = entity.radius;
 
     /*
-     * Resolved against every obstacle rather than just the first hit. In a
-     * corner a single pass would push the entity out of one wall and into the
-     * other; iterating settles it in the gap.
+     * Only the walls near the entity, via the broadphase. On ORBITAL-09 that
+     * is two or three rather than sixty-nine - and the result is identical,
+     * because a wall on the far side of the station could not have been hit.
+     *
+     * Before a map loads there is no grid, so everything present is checked;
+     * at that point the world is empty anyway.
      */
-    for (const rect of world.obstacles) {
+    const candidates = world.grid
+      ? world.grid.query(scratch.x, scratch.y, scratch.radius, nearby)
+      : world.obstacles;
+
+    /*
+     * Resolved against every candidate rather than stopping at the first hit.
+     * In a corner a single pass would push the entity out of one wall and into
+     * the other; iterating settles it in the gap.
+     */
+    for (const rect of candidates) {
       resolveCircleRect(scratch, rect);
     }
     clampToBounds(scratch, world.bounds);

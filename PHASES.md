@@ -13,8 +13,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 7 | Lobby | **done** |
 | 8 | Socket.IO architecture | **done** |
 | 9 | Canvas game engine | **done** |
-| 10 | Map + collision | next |
-| 11 | Player movement | |
+| 10 | Map + collision | **done** |
+| 11 | Player movement | next |
 | 12 | Role system | |
 | 13 | Objectives | |
 | 14 | Sabotage | |
@@ -324,3 +324,41 @@ The remainder of the socket architecture, completing what Phase 7 started.
 **Redis needs three connections.** A client in subscriber mode cannot issue ordinary commands, so the adapter's publisher and subscriber cannot be reused for directory reads and writes.
 
 **The sequence guard rejects equality, not just regression.** A client never legitimately sends the same sequence twice, so a duplicate is a retransmission or a replay — and applying it twice is the bug either way.
+
+## Phase 10 — what was built
+
+ORBITAL-09, and the collision to go with it (§14).
+
+**Server owns the geometry.** The map is authored server-side and shipped as data over `GET /api/maps/:mapId`, per the Phase 1 decision. Moving a wall is a data change the client picks up on its next load, not a protocol change requiring both sides to redeploy together — and the server stays the only authority on where a wall is, which is what will let both sides resolve collision to the same answer in Phase 11.
+
+- `geometry.ts`: walls are *derived* from a room's interior plus its doorways rather than typed out. ORBITAL-09 is ten room rectangles a person can check; the 69 wall segments are generated from them.
+- `orbital09.ts`: the ten rooms, 15 spawns, 9 objective terminals, 6 repair stations.
+- `zoneAt`: which room a point is in. Corridors are the space *between* rooms — nothing declares a corridor.
+
+**Client**
+- `SpatialGrid`: a uniform-grid broadphase. 69 walls × 15 players × 60Hz is ~62,000 checks a second to discover most walls are across the station; the grid cuts each query to two or three candidates.
+- Renderer draws room floors, walls, terminals, repair stations and room labels at fixed pixel size.
+- Map loads *after* the loop starts, so a slow connection sees an empty hull rather than a black screen.
+- Current room shown in the HUD, polled twice a second rather than pushed — the engine still never calls `setState`.
+
+**Verification**: 38 new tests (187 server, 51 web).
+
+## Decisions made in Phase 10
+
+**Walls are generated, not authored.** Hand-typing ~120 wall rectangles means every one has four numbers that must agree with its neighbours, and moving a room by 20 units means editing a dozen of them correctly. Describing the layout once, in terms a person can verify, and letting arithmetic do the arithmetic is the difference between a map that can be adjusted and one nobody dares touch.
+
+**Every room has at least two doors.** A dead end turns every encounter into a certainty — "I watched them go in and nobody came out" should be a claim that can be wrong. There is a test asserting both the minimum *and* the exact authored count.
+
+**The two critical repair stations are far apart.** A reactor breach needs both worked, so the crew must split up — and splitting up is what makes a sabotage dangerous beyond its timer. Tested at >800 units apart.
+
+**Everyone spawns in the corridor, not in rooms.** A match that begins with two players already alone together in Cargo Bay has handed the Saboteur a free elimination before anyone has moved.
+
+**A broadphase is an optimisation, not a rule.** It changes which pairs get tested, never the outcome. That is why the server may use a different one — or none — without the two sides disagreeing about where a player ends up. Anything that *decided* collision could not be duplicated this way.
+
+## Two test bugs found and fixed this phase
+
+Both are worth recording, because both were tests that passed while proving nothing.
+
+**The doorway counter was vacuously passing.** It reported 22 openings for a two-door room: probes from different sides were interleaved, so the open/closed flag flip-flopped between unrelated walls and every alternation counted as a doorway. `>= 2` passed regardless. Fixed by walking each side separately, asserting the *exact* authored count, and adding a self-check that the counter can tell a sealed wall from an open one.
+
+**The spatial grid's cell key was not injective.** `row * columns + column` makes `key(-1, row)` collide with `key(columns-1, row-1)`, so a query just off the left edge could return walls from the right edge of the row above. It produced false positives rather than misses, so collision stayed correct — but the test that was supposed to catch it passed by luck on the values chosen. Indices are now clamped into range, with a test for the specific aliasing case.

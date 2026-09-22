@@ -1,4 +1,5 @@
-import type { AnimationState, Facing, Vec2 } from '@voidline/shared';
+import type { AnimationState, Facing, MapData, MapZone, Vec2 } from '@voidline/shared';
+import type { SpatialGrid } from '../collision/SpatialGrid';
 
 /**
  * Engine types.
@@ -53,10 +54,21 @@ export interface Entity {
 export interface World {
   entities: Map<string, Entity>;
   localId: string | null;
-  /** Rectangular world bounds. Phase 10 replaces this with the real map. */
+  /** Outer hull. Nothing leaves it. */
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  /** Static obstacles. Populated from map data in Phase 10. */
+  /** Solid geometry, from the server-authored map. */
   obstacles: Rect[];
+  /** Named rooms, for labels and zone reporting. */
+  zones: MapZone[];
+  /**
+   * Broadphase over `obstacles`. Built once when the map loads.
+   *
+   * Null until a map is loaded, so the engine can run - and render an empty
+   * hull - while the map request is still in flight.
+   */
+  grid: SpatialGrid | null;
+  /** The map this world was built from, if any. */
+  map: MapData | null;
 }
 
 export interface Rect {

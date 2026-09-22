@@ -4,42 +4,61 @@ import {
   DEFAULT_AVATAR_ID,
   Facing,
   PLAYER_RADIUS,
+  ZoneId,
   isAvatarId,
+  type MapData,
 } from '@voidline/shared';
+import { SpatialGrid } from '../collision/SpatialGrid';
 import type { Entity, World } from '../engine/types';
 
 /**
  * World construction and entity bookkeeping.
  *
  * The world is a plain mutable object. Entities are added and removed here, and
- * mutated in place by the systems - there is no event bus, no reactive layer,
- * nothing that would make a position change cost more than writing a number.
+ * mutated in place by the systems - there is no event bus and no reactive
+ * layer, so a position change costs exactly one number written.
  */
 
 /**
- * A placeholder arena.
+ * An empty world.
  *
- * PHASE 9 SCOPE: a bounded room with a few blocks in it, enough to exercise
- * camera clamping, collision and culling. ORBITAL-09's ten zones and their real
- * geometry arrive in Phase 10, loaded as map data from the server - which is
- * why `obstacles` is just an array of rectangles rather than anything the
- * layout is baked into.
+ * Deliberately usable before a map arrives: the engine starts immediately and
+ * the map is loaded into it when the request returns. Blocking the loop on a
+ * network round trip would mean a black screen on a slow connection.
  */
 export function createWorld(): World {
   return {
     entities: new Map(),
     localId: null,
     bounds: { minX: 0, minY: 0, maxX: 1600, maxY: 1200 },
-    obstacles: [
-      { x: 260, y: 220, width: 300, height: 40 },
-      { x: 260, y: 220, width: 40, height: 260 },
-      { x: 1040, y: 220, width: 300, height: 40 },
-      { x: 1300, y: 220, width: 40, height: 260 },
-      { x: 700, y: 520, width: 200, height: 160 },
-      { x: 260, y: 940, width: 340, height: 40 },
-      { x: 1000, y: 940, width: 340, height: 40 },
-    ],
+    obstacles: [],
+    zones: [],
+    grid: null,
+    map: null,
   };
+}
+
+/**
+ * Loads server-authored map data into a world.
+ *
+ * The geometry is taken as given. The client does not author, adjust or
+ * second-guess it - the server is the only authority on where a wall is, which
+ * is what lets both sides resolve collision to the same answer (Phase 11).
+ */
+export function loadMap(world: World, map: MapData): void {
+  world.map = map;
+  world.bounds = {
+    minX: map.bounds.x,
+    minY: map.bounds.y,
+    maxX: map.bounds.x + map.bounds.width,
+    maxY: map.bounds.y + map.bounds.height,
+  };
+  world.obstacles = map.walls.map((wall) => ({ ...wall }));
+  world.zones = map.zones;
+
+  // Built once. The geometry is static for the life of the match, so there is
+  // nothing to rebuild per tick.
+  world.grid = new SpatialGrid(map.bounds, world.obstacles);
 }
 
 export interface SpawnOptions {
@@ -91,14 +110,44 @@ export function getLocalEntity(world: World): Entity | null {
 }
 
 /**
- * A spawn point clear of the obstacles.
+ * A spawn point for the nth player.
  *
- * Phase 10 replaces this with the map's declared spawn points; until then it
- * picks the centre of the arena, which the placeholder layout keeps clear.
+ * Uses the map's declared spawns, which are spread along the central corridor
+ * so a match does not begin with two players already alone together (see
+ * orbital09.ts). Falls back to the centre of the world before a map loads.
  */
-export function defaultSpawn(world: World): { x: number; y: number } {
+export function spawnPointFor(world: World, index: number): { x: number; y: number } {
+  const spawns = world.map?.spawns;
+
+  if (spawns && spawns.length > 0) {
+    const spawn = spawns[index % spawns.length]!;
+    return { x: spawn.x, y: spawn.y };
+  }
+
   return {
     x: (world.bounds.minX + world.bounds.maxX) / 2,
-    y: (world.bounds.minY + world.bounds.maxY) / 2 + 260,
+    y: (world.bounds.minY + world.bounds.maxY) / 2,
   };
+}
+
+/**
+ * Which room a point is in.
+ *
+ * The client's copy of the server's `zoneAt`, reading the same shipped
+ * geometry, used for the HUD. The server computes the authoritative value that
+ * other players are told about - this one only decides what its own player
+ * sees written on their screen.
+ */
+export function zoneAt(world: World, x: number, y: number): ZoneId {
+  for (const zone of world.zones) {
+    if (
+      x >= zone.bounds.x &&
+      x <= zone.bounds.x + zone.bounds.width &&
+      y >= zone.bounds.y &&
+      y <= zone.bounds.y + zone.bounds.height
+    ) {
+      return zone.id;
+    }
+  }
+  return ZoneId.CORRIDOR;
 }

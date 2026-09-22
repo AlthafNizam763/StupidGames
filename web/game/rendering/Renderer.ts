@@ -104,7 +104,10 @@ export class Renderer {
     ctx.translate(-this.camera.position.x, -this.camera.position.y);
 
     this.drawFloor(ctx, world);
+    this.drawZones(ctx, world);
+    this.drawTerminals(ctx, world);
     this.drawObstacles(ctx, world);
+    this.drawZoneLabels(ctx, world);
     this.drawEntities(ctx, world);
 
     ctx.restore();
@@ -161,6 +164,94 @@ export class Renderer {
       world.bounds.maxX - world.bounds.minX,
       world.bounds.maxY - world.bounds.minY,
     );
+  }
+
+  /**
+   * Room floors.
+   *
+   * Drawn a shade lighter than the corridors so a player can tell at a glance
+   * whether they are inside a room or in the open - which matters, because
+   * "where were you" is the question the whole game turns on.
+   */
+  private drawZones(ctx: CanvasRenderingContext2D, world: World): void {
+    ctx.fillStyle = '#0f1520';
+
+    for (const zone of world.zones) {
+      const { x, y, width, height } = zone.bounds;
+      if (!this.camera.isVisible(x + width / 2, y + height / 2, Math.max(width, height))) continue;
+      ctx.fillRect(x, y, width, height);
+    }
+  }
+
+  /**
+   * Objective terminals and repair stations.
+   *
+   * Markers only at this stage: the objectives themselves are Phase 13. They
+   * are drawn because a map with nothing in its rooms reads as unfinished, and
+   * because their placement is the thing worth being able to see and judge.
+   */
+  private drawTerminals(ctx: CanvasRenderingContext2D, world: World): void {
+    const map = world.map;
+    if (!map) return;
+
+    for (const terminal of map.terminals) {
+      if (!this.camera.isVisible(terminal.position.x, terminal.position.y, 24)) continue;
+
+      ctx.fillStyle = '#1d2635';
+      ctx.strokeStyle = '#3fe0bc';
+      ctx.lineWidth = 2 / this.camera.scale;
+      ctx.beginPath();
+      ctx.roundRect(terminal.position.x - 16, terminal.position.y - 12, 32, 24, 5);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    for (const station of map.repairStations) {
+      if (!this.camera.isVisible(station.position.x, station.position.y, 24)) continue;
+
+      ctx.fillStyle = '#1d2635';
+      ctx.strokeStyle = '#ffc15e';
+      ctx.lineWidth = 2 / this.camera.scale;
+      ctx.beginPath();
+      ctx.arc(station.position.x, station.position.y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Room names, at a fixed pixel size.
+   *
+   * Scaled inversely to the camera so a label stays readable rather than
+   * growing and shrinking with the zoom, and skipped entirely when the room is
+   * off screen.
+   */
+  private drawZoneLabels(ctx: CanvasRenderingContext2D, world: World): void {
+    const inverse = 1 / this.camera.scale;
+
+    ctx.font = '700 12px "Space Grotesk", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const zone of world.zones) {
+      const centreX = zone.bounds.x + zone.bounds.width / 2;
+      const centreY = zone.bounds.y + zone.bounds.height / 2;
+      if (!this.camera.isVisible(centreX, centreY, Math.max(zone.bounds.width, zone.bounds.height)))
+        continue;
+
+      ctx.save();
+      ctx.translate(centreX, centreY);
+      ctx.scale(inverse, inverse);
+
+      const label = zone.label.toUpperCase();
+      ctx.letterSpacing = '2px';
+      ctx.fillStyle = 'rgba(102,116,137,0.55)';
+      ctx.fillText(label, 0, 0);
+
+      ctx.restore();
+    }
+
+    ctx.letterSpacing = '0px';
   }
 
   private drawObstacles(ctx: CanvasRenderingContext2D, world: World): void {
