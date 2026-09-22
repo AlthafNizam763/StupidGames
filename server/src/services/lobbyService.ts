@@ -2,6 +2,7 @@ import {
   ConnectionState,
   ErrorCode,
   GamePhase,
+  isLobbyPhase,
   MIN_PLAYERS_TO_START,
   ROOM_CODE_PATTERN,
   type RoomState,
@@ -78,9 +79,7 @@ export const lobbyService = {
 
     if (!existing) {
       if (room.phase === GamePhase.ENDED) throw new AppError(ErrorCode.ROOM_CLOSED);
-      if (room.phase !== GamePhase.LOBBY && room.phase !== GamePhase.WAITING) {
-        throw new AppError(ErrorCode.ROOM_IN_PROGRESS);
-      }
+      if (!isLobbyPhase(room.phase)) throw new AppError(ErrorCode.ROOM_IN_PROGRESS);
       if (room.members.size >= room.settings.maxPlayers) throw new AppError(ErrorCode.ROOM_FULL);
 
       /*

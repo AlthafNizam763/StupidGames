@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useSearchParams } from 'next/navigation';
 import {
@@ -26,10 +26,14 @@ import {
   sampleResult,
   samplePuzzle,
   sampleSelf,
+  sampleRoom,
   sampleSnapshot,
 } from './samples';
 import { HomeScreen } from '@/components/home/HomeScreen';
 import { ProfileScreen } from '@/components/profile/ProfileScreen';
+import { LeaderboardScreen } from '@/components/social/LeaderboardScreen';
+import { FriendsScreen } from '@/components/social/FriendsScreen';
+import { useRoomStore } from '@/stores/roomStore';
 import { useSessionStore } from '@/stores/sessionStore';
 
 /**
@@ -154,6 +158,31 @@ function CouncilPreview({ phase }: { phase: GamePhase }) {
   );
 }
 
+/**
+ * Forces a troubled connection so `ConnectionStatus` renders.
+ *
+ * Seeds `roomStore` directly, the same way this harness seeds the session:
+ * the component reads a live socket state that nothing in this environment
+ * can produce.
+ */
+function ConnectionPreview({ connection }: { connection: 'reconnecting' | 'error' }) {
+  /*
+   * Seeded from an effect, not from render.
+   *
+   * Writing to the store during render updates `ConnectionStatus` while this
+   * component is still rendering, which React reports as "Cannot update a
+   * component while rendering a different component" - a real warning, in a
+   * harness whose whole purpose is making real warnings visible. Pushing to
+   * an external store after commit is what an effect is for.
+   */
+  useEffect(() => {
+    useRoomStore.setState({ room: sampleRoom(), connection });
+    return () => useRoomStore.setState({ room: null, connection: 'idle' });
+  }, [connection]);
+
+  return <HomeScreen />;
+}
+
 function ResultsPreview({ winner }: { winner: Team }) {
   return <MatchResults result={sampleResult(winner)} viewerId={VIEWER_ID} onContinue={() => undefined} />;
 }
@@ -174,6 +203,8 @@ const SCREENS = {
   home: HomeScreen,
   customise: CustomiseScreen,
   profile: ProfileScreen,
+  leaderboard: LeaderboardScreen,
+  friends: FriendsScreen,
   council: () => <CouncilPreview phase={GamePhase.COUNCIL} />,
   voting: () => <CouncilPreview phase={GamePhase.VOTING} />,
   ejection: () => <CouncilPreview phase={GamePhase.EJECTION} />,
@@ -182,6 +213,8 @@ const SCREENS = {
   'task-align': () => <TaskPreview kind={PuzzleKind.ALIGN} />,
   'task-order': () => <TaskPreview kind={PuzzleKind.ORDER} />,
   'task-select': () => <TaskPreview kind={PuzzleKind.SELECT} />,
+  reconnecting: () => <ConnectionPreview connection="reconnecting" />,
+  offline: () => <ConnectionPreview connection="error" />,
 } as const;
 
 

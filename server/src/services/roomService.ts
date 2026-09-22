@@ -2,6 +2,7 @@ import {
   ConnectionState,
   ErrorCode,
   GamePhase,
+  isLobbyPhase,
   MIN_PLAYERS_TO_START,
   DEFAULT_APPEARANCE,
   ROOM_CODE_PATTERN,
@@ -40,9 +41,7 @@ function joinBlocker(room: Room): ErrorCode | null {
 
   // Anything past the lobby means the match is under way. A late arrival would
   // have no role, no objectives and no position.
-  if (room.phase !== GamePhase.LOBBY && room.phase !== GamePhase.WAITING) {
-    return ErrorCode.ROOM_IN_PROGRESS;
-  }
+  if (!isLobbyPhase(room.phase)) return ErrorCode.ROOM_IN_PROGRESS;
 
   if (room.members.size >= room.settings.maxPlayers) return ErrorCode.ROOM_FULL;
 

@@ -15,12 +15,15 @@ export const ROUTES = {
   lobby: (code: string) => `/lobby/${code}`,
   game: (code: string) => `/game/${code}`,
   leaderboard: '/leaderboard',
+  friends: '/friends',
+  howToPlay: '/how-to-play',
   settings: '/settings',
 } as const;
 
 /** Routes reachable without a session. Everything else requires one. */
 export const PUBLIC_ROUTES: readonly string[] = [
   ROUTES.splash,
+  ROUTES.howToPlay,
   ROUTES.login,
   ROUTES.register,
   ROUTES.forgotPassword,

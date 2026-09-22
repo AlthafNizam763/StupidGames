@@ -9,6 +9,9 @@ import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/Button';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/lib/cn';
+import { useFirstVisit } from '@/hooks/useFirstVisit';
+import { ONBOARDING_KEY } from '@/constants/storage';
+import { HowToPlay } from '@/components/onboarding/HowToPlay';
 import { useSessionStore } from '@/stores/sessionStore';
 
 /**
@@ -66,14 +69,14 @@ const DESTINATIONS: Destination[] = [
     key: 'friends',
     label: 'Friends',
     description: 'Your crew',
-    href: null,
+    href: ROUTES.friends,
     icon: <Icon path="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87" />,
   },
   {
     key: 'leaderboard',
     label: 'Leaderboard',
     description: 'Station rankings',
-    href: null,
+    href: ROUTES.leaderboard,
     icon: <Icon path="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4ZM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" />,
   },
   {
@@ -82,6 +85,13 @@ const DESTINATIONS: Destination[] = [
     description: 'Record and achievements',
     href: ROUTES.profile,
     icon: <Icon path="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />,
+  },
+  {
+    key: 'how-to-play',
+    label: 'How to play',
+    description: 'The rules, in one minute',
+    href: ROUTES.howToPlay,
+    icon: <Icon path="M12 17h.01M12 14c0-2 2.5-2.2 2.5-4.2A2.5 2.5 0 0 0 12 7.3a2.5 2.5 0 0 0-2.5 2.5M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />,
   },
   {
     key: 'settings',
@@ -148,6 +158,7 @@ export function HomeScreen() {
   const logout = useSessionStore((s) => s.logout);
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const { seen: seenIntro, markSeen: markIntroSeen } = useFirstVisit(ONBOARDING_KEY);
 
   if (!user) return null;
 
@@ -261,6 +272,16 @@ export function HomeScreen() {
           ))}
         </nav>
       </div>
+
+      {/*
+       * The introduction, once.
+       *
+       * Rendered *over* the home screen rather than instead of it, so a player
+       * who dismisses it is already looking at where they were going. Reading
+       * it from /how-to-play counts as having seen it, so it never appears
+       * after somebody has gone looking for it themselves.
+       */}
+      {seenIntro ? null : <HowToPlay overlay onDone={markIntroSeen} />}
     </main>
   );
 }

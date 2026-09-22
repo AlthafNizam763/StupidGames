@@ -48,7 +48,20 @@ export function buttonStyles(options: {
     'disabled:pointer-events-none disabled:opacity-45',
     SIZES[size],
     VARIANTS[variant],
-    fullWidth && 'w-full',
+    /*
+     * A button that is not full width does not shrink below its own label.
+     *
+     * The label carries `truncate`, which sets `overflow: hidden` and so lets
+     * the button shrink past its content inside a flex row. Beside a
+     * `fullWidth` sibling that means the short button collapses - "Skip"
+     * became "S…" in the council and "Back" became "B…" in the onboarding,
+     * twice, before this was fixed here rather than at each call site.
+     *
+     * `shrink-0` is deliberately NOT applied to a full-width button: `w-full`
+     * plus no shrink in a flex row is an overflow waiting to happen, and
+     * full-width buttons are the ones that legitimately need to give way.
+     */
+    fullWidth ? 'w-full' : 'shrink-0',
     className,
   );
 }

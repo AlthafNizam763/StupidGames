@@ -481,8 +481,22 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
 
         if (!matches) throw new AppError(ErrorCode.SERVICE_UNAVAILABLE);
 
-        roomManager.setPhase(room, GamePhase.STARTING);
+        /*
+         * The match is built before the room is moved out of the lobby.
+         *
+         * The other order left a failed start - an unknown map, a setting the
+         * engine refuses - with the room parked in STARTING: no match to carry
+         * it forward, and no transition back, so every later press of Start was
+         * answered with "the match is not in the lobby". Dealing first means a
+         * throw here leaves the lobby exactly as it was and the host can try
+         * again.
+         *
+         * Safe to reorder because `start` reads the room's seats and settings
+         * and never its phase, and the first tick cannot land before the
+         * synchronous line below it.
+         */
         const match = matches.start(room, getMap(room.settings.map));
+        roomManager.setPhase(room, GamePhase.STARTING);
         room.matchId = match.id;
 
         /*

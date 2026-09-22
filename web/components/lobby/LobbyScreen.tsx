@@ -4,9 +4,9 @@ import {
   ConnectionState,
   MAP_LABELS,
   MIN_PLAYERS_TO_START,
+  isMatchPhase,
   type LobbyPlayer,
 } from '@voidline/shared';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { CharacterBust } from '@/components/character';
@@ -165,6 +165,31 @@ export function LobbyScreen({ code }: { code: string }) {
     toast.info(exitReason);
     router.replace(ROUTES.home);
   }, [exitReason, router]);
+
+  /*
+   * The match has begun - this screen is no longer the one to be looking at.
+   *
+   * `room:start` answers the host with an ack and nothing more: the screen
+   * change comes from the phase in the `room:state` the server broadcasts to
+   * everyone. Driving it from the phase rather than from the ack means every
+   * seat leaves on the same signal, so the host is not special-cased, and a
+   * player who was reconnecting when the match started is carried in as soon
+   * as their state arrives.
+   *
+   * Without this the room moved to STARTING while every client sat in the
+   * lobby, and a second press of Start was refused with "the match is not in
+   * the lobby" - the room had already left it.
+   *
+   * `replace`, not `push`: there is no lobby to go back to, and going back
+   * would only land here and bounce straight out again.
+   */
+  const phase = room?.phase;
+  const roomCode = room?.code;
+
+  useEffect(() => {
+    if (!phase || !roomCode || !isMatchPhase(phase)) return;
+    router.replace(ROUTES.game(roomCode));
+  }, [phase, roomCode, router]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -375,19 +400,6 @@ export function LobbyScreen({ code }: { code: string }) {
               </Button>
             </>
           )}
-
-          {/*
-           * The engine runs, the match does not. Until room:start can begin one
-           * (Phase 12), this is how the rendering, input and collision work
-           * built in Phase 9 is actually reachable - labelled as a preview so
-           * nobody mistakes it for the game.
-           */}
-          <Link
-            href={ROUTES.game(room.code)}
-            className="touch-target inline-flex items-center justify-center rounded-xl text-sm text-ink-faint underline-offset-4 transition-colors hover:text-ink-muted hover:underline"
-          >
-            Open engine preview
-          </Link>
         </div>
       </div>
     </main>

@@ -136,18 +136,14 @@ export function CouncilScreen({
                 ) : (
                   <div className="flex gap-2">
                     {/*
-                     * `shrink-0`, or the full-width Confirm beside it takes
-                     * every spare pixel and the label truncates to "S…" at
-                     * every width. Skip is a four-letter word; it should
-                     * never be abbreviated.
+                     * Skip keeps its full label beside the full-width Confirm
+                     * because `Button` no longer lets a non-full-width button
+                     * shrink below its own text. It used to render as "S…".
                      */}
                     <Button
                       variant="secondary"
                       onClick={() => setSelected(SKIP_VOTE)}
-                      className={cn(
-                        'shrink-0',
-                        selected === SKIP_VOTE && 'border-signal text-signal',
-                      )}
+                      className={cn(selected === SKIP_VOTE && 'border-signal text-signal')}
                     >
                       Skip
                     </Button>

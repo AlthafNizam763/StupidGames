@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   GamePhase,
@@ -142,12 +143,13 @@ export function GameScreen({ code }: { code: string }) {
   /**
    * Shuts the objective panel.
    *
-   * Closing is purely local - the server has no notion of a panel being open,
-   * only of steps submitted - so this clears the store's copy directly rather
-   * than round-tripping. Re-opening the terminal issues a fresh puzzle.
+   * Closing is purely local: the server has no notion of a panel being open,
+   * only of steps submitted. Re-opening the terminal issues a fresh puzzle and
+   * restarts the minimum-time floor, so walking away costs time rather than
+   * saving it and there is no re-roll to exploit.
    */
   function closeTask() {
-    useGameStore.setState({ puzzle: null });
+    store().closeTask();
   }
 
   /* ------------------------------------------------------------ gates - */
@@ -163,9 +165,24 @@ export function GameScreen({ code }: { code: string }) {
   }
 
   if (!snapshot || !self) {
+    /*
+     * No match to show: either `game:resume` has not landed yet, or there is
+     * nothing to resume because the room is still in the lobby.
+     *
+     * The second case used to be a dead end - a line of text and no way out of
+     * it. The lobby is where a room with no match belongs, and it forwards
+     * straight back here the moment one starts, so the link is safe in both
+     * cases and only ever costs an impatient player a round trip.
+     */
     return (
-      <main className="station-backdrop min-h-screen-safe grid place-items-center px-safe">
+      <main className="station-backdrop min-h-screen-safe grid place-items-center gap-4 px-safe">
         <p className="text-sm text-ink-muted">Waiting for the station…</p>
+        <Link
+          href={ROUTES.lobby(code)}
+          className="touch-target inline-flex items-center justify-center rounded-xl text-sm text-ink-faint underline-offset-4 transition-colors hover:text-ink-muted hover:underline"
+        >
+          Back to the lobby
+        </Link>
       </main>
     );
   }
@@ -219,7 +236,17 @@ export function GameScreen({ code }: { code: string }) {
           onSabotage={(type: SabotageType) =>
             void run('Sabotage refused', () => store().sabotage(type))
           }
-          onOpenMenu={() => router.push(ROUTES.lobby(code))}
+          /*
+           * Settings, not the lobby.
+           *
+           * The lobby belongs to a room that has not started; sending a player
+           * there mid-match showed them a Start button for a match already
+           * running, and now that the lobby forwards a started room back here
+           * it would be a bounce. Settings is a real screen, its back control
+           * returns to the match, and the socket is untouched throughout - the
+           * match keeps running and `game:resume` rebuilds the view on return.
+           */
+          onOpenMenu={() => router.push(ROUTES.settings)}
         />
       )}
 

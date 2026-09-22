@@ -109,6 +109,25 @@ export function isMeetingPhase(phase: GamePhase): boolean {
   return MEETING_PHASES.includes(phase);
 }
 
+/** Phases in which the room is still assembling and no match exists yet. */
+export const LOBBY_PHASES: readonly GamePhase[] = [GamePhase.WAITING, GamePhase.LOBBY];
+
+export function isLobbyPhase(phase: GamePhase): boolean {
+  return LOBBY_PHASES.includes(phase);
+}
+
+/**
+ * True while a match exists for this room - dealt, running, or on the results
+ * screen.
+ *
+ * The client uses it to decide that the lobby has stopped being the right
+ * screen to look at, rather than enumerating seven phases at the call site and
+ * forgetting one of them.
+ */
+export function isMatchPhase(phase: GamePhase): boolean {
+  return !isLobbyPhase(phase) && phase !== GamePhase.ENDED;
+}
+
 /* --------------------------------------------------------------- outcomes - */
 
 export const WinReason = {

@@ -4,6 +4,7 @@ import {
   ConnectionState,
   Facing,
   GamePhase,
+  GameMode,
   MapId,
   MeetingTrigger,
   PlayerRole,
@@ -19,6 +20,7 @@ import {
   type GameSnapshot,
   type MatchResult,
   type PublicPlayerState,
+  type RoomState,
   type TaskPuzzle,
   type VotingResult,
 } from '@voidline/shared';
@@ -356,4 +358,50 @@ export function samplePuzzle(kind: PuzzleKind): TaskPuzzle {
         },
       };
   }
+}
+
+/* ------------------------------------------------------------- room - */
+
+/**
+ * A room in the lobby, for previewing anything that reads `roomStore`.
+ *
+ * The connection surfaces in particular cannot be reached any other way here:
+ * they render only when a live socket drops inside a room, and there is no
+ * server in this environment to drop one.
+ */
+export function sampleRoom(): RoomState {
+  return {
+    id: 'preview-room',
+    code: 'X7K9P2',
+    hostId: 'p-alex',
+    phase: GamePhase.LOBBY,
+    settings: {
+      name: 'Night shift',
+      map: MapId.ORBITAL_09,
+      gameMode: GameMode.CLASSIC,
+      maxPlayers: 8,
+      saboteurCount: 2,
+      objectiveCount: 7,
+      discussionTime: 45,
+      votingTime: 30,
+      killCooldown: 25,
+      emergencyMeetingLimit: 1,
+      anonymousVoting: false,
+      confirmEjection: true,
+      isPrivate: true,
+    },
+    players: CREW.map((member, index) => ({
+      userId: member.id,
+      username: member.name,
+      avatar: member.avatar,
+      appearance: deriveAppearance(member.id),
+      level: 3 + index,
+      isHost: member.id === 'p-alex',
+      isReady: index % 2 === 0,
+      connection: ConnectionState.CONNECTED,
+      joinedAt: '2026-09-22T17:00:00.000Z',
+    })),
+    matchId: null,
+    createdAt: '2026-09-22T17:00:00.000Z',
+  };
 }
