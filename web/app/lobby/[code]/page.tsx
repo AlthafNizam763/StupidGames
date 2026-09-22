@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { RequireSession } from '@/components/auth/SessionGuards';
-import { LobbyPreview } from '@/components/lobby/LobbyPreview';
+import { LobbyScreen } from '@/components/lobby/LobbyScreen';
 
 export const metadata: Metadata = { title: 'Lobby' };
 
@@ -13,7 +13,7 @@ export default async function LobbyPage({ params }: { params: Promise<{ code: st
 
   return (
     <RequireSession>
-      <LobbyPreview code={code.toUpperCase()} />
+      <LobbyScreen code={code.toUpperCase()} />
     </RequireSession>
   );
 }

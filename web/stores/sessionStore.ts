@@ -4,6 +4,7 @@ import type { LoginInput, RegisterInput, SelfUser } from '@voidline/shared';
 import { create } from 'zustand';
 import { authApi } from '@/services/auth';
 import { ApiError, configureAuth } from '@/services/http';
+import { configureSocketAuth, resetSocket } from '@/services/socket';
 
 /**
  * The signed-in session.
@@ -68,6 +69,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   async logout() {
+    // The socket carries the player's identity in a room. Dropping it before
+    // clearing the session stops a stale connection acting as the old user.
+    resetSocket();
+
     try {
       // Clears the httpOnly cookie server-side; the browser cannot do it here.
       await authApi.logout();
@@ -92,6 +97,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
  *
  * Runs once at module load, before any component mounts.
  */
+configureSocketAuth(() => useSessionStore.getState().accessToken);
+
 configureAuth({
   getAccessToken: () => useSessionStore.getState().accessToken,
 

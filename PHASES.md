@@ -10,8 +10,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 4 | Authentication | **done** |
 | 5 | Home / Profile / Settings | **done** |
 | 6 | Room creation and joining | **done** |
-| 7 | Lobby | next |
-| 8 | Socket.IO architecture | |
+| 7 | Lobby | **done** |
+| 8 | Socket.IO architecture | partly done — see Phase 7 |
 | 9 | Canvas game engine | |
 | 10 | Map + collision | |
 | 11 | Player movement | |
@@ -223,3 +223,41 @@ Rooms: creating them, finding them, previewing them.
 **One room per host, with a caveat.** Creating a second room closes the first when it is empty — an abandoned lobby from a closed tab should not linger. When other players are still in it, the request is refused instead, because closing it would eject them without warning.
 
 **Rooms are reaped when idle.** Without a sweep, every abandoned lobby stays in memory until the process restarts. Rooms with nobody connected are closed after the teardown delay; a room with any connected member is never touched.
+
+## Phase 7 — what was built
+
+The live lobby, and the socket layer underneath it.
+
+**A note on phase order.** §52 lists Lobby (7) before Socket.IO (8), but a lobby without sockets is a screen that cannot update, and Phase 6 deliberately made membership socket-only rather than building REST membership that would need unpicking. So the realtime foundation was built here. Phase 8 extends it to gameplay events, reconnection of *match* state, and the Redis adapter — it does not start from nothing.
+
+**Server**
+- Socket.IO on the `/game` namespace, typed end to end against the shared contract in both directions.
+- Handshake authentication: the JWT is verified before any handler exists, and identity lands on `socket.data`.
+- A `handle()` wrapper turning every handler into one that cannot crash the connection — an `AppError` becomes a failed acknowledgement, anything else a logged `INTERNAL_ERROR`.
+- Per-socket rate limiting on the shared budgets.
+- `lobbyService`: join, leave, ready, kick, close, host transfer, connection state and grace expiry — framework-free and unit-tested without opening a socket.
+- Seat retention across a dropped connection, released on a timer when the player does not return.
+- `RoomManager` membership operations, including host transfer to the longest-seated connected player.
+- Graceful shutdown now closes sockets before HTTP.
+
+**Client**
+- A single typed socket for the application, with `emitWithAck` turning acknowledgements into promises that resolve, reject or time out.
+- Automatic silent refresh-and-reconnect when the handshake fails on an expired token.
+- `roomStore` holding exactly what the server last broadcast.
+- The full lobby screen: code with copy, live roster with avatars, ready and connection state, host controls, and a start button whose disabled state mirrors the server's preconditions.
+
+**Verification**: 28 new server tests (125 total) and a 49-check end-to-end pass driving six concurrent real Socket.IO clients through a shared lobby.
+
+## Decisions made in Phase 7
+
+**Nothing is applied optimistically.** Tapping Ready asks the server and waits for the next `room:state`. A lobby is shared, and a client that renders its own guess shows one player something the others cannot see.
+
+**A dropped connection is a pause, not an ejection.** The seat is held for the grace period and the player shows as `RECONNECTING` to everyone. Rejoining is the same code path as joining — the difference between "arriving" and "coming back" is whether a seat already exists, which is not something the client gets to assert.
+
+**A host who drops keeps the room; a host who leaves hands it on.** Transferring on a brief disconnect would take the room away from someone whose train went through a tunnel. There are tests for both.
+
+**One identity, one seat.** Joining a room drops the player from any other. Two tabs must not put the same person in two rooms and hand a match a player who is not there.
+
+**A disconnect only counts when the player's last socket goes.** Another tab may still be connected; releasing the seat because one of them closed would eject someone who is still playing.
+
+**`room:start` validates everything and then says what is missing.** Every precondition — host, phase, connected count, readiness — is real and enforced, and the host sees the blocking reason next to a disabled button rather than discovering it by pressing. With all checks passed, the server reports that the match engine is not built rather than moving the room into a phase nothing can advance, which would strand everyone on a "starting" screen. Phase 12 replaces one line; nothing above it changes.

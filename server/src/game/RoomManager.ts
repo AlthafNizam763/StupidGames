@@ -176,6 +176,97 @@ class RoomManagerImpl {
     return true;
   }
 
+  /* --------------------------------------------------- membership - */
+
+  /**
+   * Seats a player, or returns their existing seat.
+   *
+   * Idempotent on purpose: a reconnecting player runs the same path as a new
+   * one, and the difference between "joining" and "coming back" is whether a
+   * seat already exists - not something the client gets to assert.
+   */
+  addMember(
+    room: Room,
+    player: Omit<LobbyPlayer, 'isHost' | 'isReady' | 'connection' | 'joinedAt'>,
+  ): LobbyPlayer {
+    const existing = room.members.get(player.userId);
+
+    if (existing) {
+      existing.connection = ConnectionState.CONNECTED;
+      // Refresh the display fields: they may have changed their name or suit
+      // since they were last here.
+      existing.username = player.username;
+      existing.avatar = player.avatar;
+      existing.level = player.level;
+      this.touch(room);
+      return existing;
+    }
+
+    const seat: LobbyPlayer = {
+      ...player,
+      isHost: room.hostId === player.userId,
+      // The host is always ready; they are the one who starts the match.
+      isReady: room.hostId === player.userId,
+      connection: ConnectionState.CONNECTED,
+      joinedAt: new Date().toISOString(),
+    };
+
+    room.members.set(player.userId, seat);
+    this.touch(room);
+    return seat;
+  }
+
+  removeMember(room: Room, userId: UserId): boolean {
+    const removed = room.members.delete(userId);
+    if (removed) this.touch(room);
+    return removed;
+  }
+
+  setConnection(room: Room, userId: UserId, connection: ConnectionState): void {
+    const member = room.members.get(userId);
+    if (!member) return;
+    member.connection = connection;
+    this.touch(room);
+  }
+
+  setReady(room: Room, userId: UserId, ready: boolean): void {
+    const member = room.members.get(userId);
+    // The host's readiness is not theirs to toggle - they start the match, so
+    // "ready" would be a checkbox that means nothing.
+    if (!member || member.isHost) return;
+    member.isReady = ready;
+    this.touch(room);
+  }
+
+  /**
+   * Hands the room to somebody else.
+   *
+   * Picks the longest-seated connected member, which is the closest thing to
+   * "who has been here and is still here". Returns null when nobody qualifies,
+   * and the caller then closes the room.
+   */
+  transferHost(room: Room): LobbyPlayer | null {
+    const candidate = [...room.members.values()]
+      .filter((member) => member.userId !== room.hostId)
+      .filter((member) => member.connection === ConnectionState.CONNECTED)
+      .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt))[0];
+
+    if (!candidate) return null;
+
+    const previous = room.members.get(room.hostId);
+    if (previous) previous.isHost = false;
+
+    room.hostId = candidate.userId;
+    candidate.isHost = true;
+    // A new host is ready by definition, since they are the one who starts.
+    candidate.isReady = true;
+
+    this.touch(room);
+    logger.info({ roomId: room.id, hostId: candidate.userId }, 'host transferred');
+
+    return candidate;
+  }
+
   close(room: Room, reason: string): void {
     this.rooms.delete(room.id);
     this.codeIndex.delete(room.code);

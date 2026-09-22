@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 import { createApp } from './app';
+import { clearGraceTimers, createSocketServer, type GameServer } from './sockets';
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './db/connect';
 import { logger } from './lib/logger';
@@ -18,6 +19,7 @@ import { logger } from './lib/logger';
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 let httpServer: Server | null = null;
+let socketServer: GameServer | null = null;
 let shuttingDown = false;
 
 async function shutdown(reason: string, exitCode = 0): Promise<void> {
@@ -38,6 +40,21 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   forceExit.unref();
 
   try {
+    /*
+     * Sockets close first. Shutting the HTTP server while connections are open
+     * leaves clients reconnecting into a process that is on its way out; this
+     * way they are disconnected once and reconnect to a healthy instance.
+     *
+     * Pending seat releases are cancelled too - firing one against a room that
+     * no longer exists is harmless but noisy, and they would otherwise be the
+     * last thing holding a timer.
+     */
+    if (socketServer) {
+      clearGraceTimers();
+      await socketServer.close();
+      logger.info('socket server closed');
+    }
+
     if (httpServer) {
       await new Promise<void>((resolve, reject) => {
         httpServer?.close((error) => (error ? reject(error) : resolve()));
@@ -63,6 +80,10 @@ async function start(): Promise<void> {
   const databaseReady = await connectDatabase();
 
   httpServer = app.listen(config.port, () => {
+    // Attached after the port is open so a client cannot race the handshake
+    // against a half-initialised namespace.
+    socketServer = createSocketServer(httpServer as Server);
+
     logger.info(
       {
         port: config.port,
