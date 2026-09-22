@@ -95,9 +95,25 @@ Pagination defaults come from `PAGINATION`: 25 per page, 100 maximum. `LOCALITY`
 | Method | Path | Returns |
 | ------ | ---- | ------- |
 | `GET` | `/api/friends` | `Friendship[]` |
+| `GET` | `/api/friends/blocked` | `Friendship[]` |
 | `POST` | `/api/friends/request` | `Friendship` |
+| `POST` | `/api/friends/block` | `null` |
 | `POST` | `/api/friends/:id/accept` | `Friendship` |
 | `DELETE` | `/api/friends/:id` | `null` |
+| `DELETE` | `/api/friends/blocked/:id` | `null` |
+
+`POST /api/friends/request` takes **either** `{ userId }` or `{ username }`, and
+must have one. Both live on the one endpoint rather than there being a username
+lookup route, because a resolver of its own would be a tidy way to enumerate
+which accounts exist. Here a name cannot be probed: an unknown username, a
+disabled account and a block all answer `404 No such player.`
+
+`GET /api/friends/blocked` returns only blocks the caller **placed**. Blocks
+placed on them are never listed, and `DELETE /api/friends/blocked/:id` refuses
+anyone but the blocker with the same `404` - a blocked player is a participant
+in that row, so the ordinary delete would otherwise let them clear it.
+
+Blocked relationships are excluded from `GET /api/friends`.
 
 ### Health
 

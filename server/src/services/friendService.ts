@@ -47,6 +47,66 @@ export const friendService = {
   },
 
   /**
+   * Blocks this player has placed. Never blocks placed *on* them.
+   *
+   * `list` excludes blocked rows, so without this a Blocked tab could only ever
+   * be empty and the player would have no way to undo a block.
+   *
+   * The filter on `blockedById` is the whole point, and it is not a detail: a
+   * list that included blocks made against the viewer would tell them they had
+   * been blocked, which is exactly what the rest of this module works to
+   * prevent. `request` and `accept` both answer "no such player" rather than
+   * confirm a block, and a Blocked tab that leaked it would undo all of that.
+   */
+  async listBlocked(userId: string): Promise<Friendship[]> {
+    const rows = await FriendshipModel.find({
+      status: 'BLOCKED',
+      blockedById: userId,
+    })
+      .sort({ updatedAt: -1 })
+      .exec();
+
+    const hydrated = await Promise.all(rows.map((row) => hydrate(row, userId)));
+    return hydrated.filter((entry): entry is Friendship => entry !== null);
+  },
+
+  /**
+   * Removes a block this player placed.
+   *
+   * Separate from `remove` because that one refuses nothing and deletes any row
+   * a participant names - which for a block would let the *blocked* party clear
+   * it by guessing the id. Only the person who placed a block may lift it.
+   */
+  async unblock(userId: string, friendshipId: string): Promise<void> {
+    const row = await FriendshipModel.findById(friendshipId).exec();
+    if (!row) return;
+
+    if (row.status !== 'BLOCKED' || String(row.blockedById) !== userId) {
+      // Reported as missing rather than forbidden, so this cannot be used to
+      // discover that a block exists.
+      throw new AppError(ErrorCode.NOT_FOUND, 'No such block.');
+    }
+
+    await FriendshipModel.deleteOne({ _id: row._id }).exec();
+    logger.info({ userId, friendshipId }, 'block lifted');
+  },
+
+  /**
+   * Resolves a username to a player id, for adding a friend by name.
+   *
+   * Deliberately not a public lookup endpoint. It exists only inside the
+   * request path, answers with the same "No such player" as every other failure
+   * there, and is rate-limited by that route - so it cannot be used to
+   * enumerate which accounts exist. A general `GET /users/by-name/:username`
+   * would be a cleaner way to do exactly that enumeration.
+   */
+  async findIdByUsername(username: string): Promise<string> {
+    const user = await userRepository.findByUsername(username);
+    if (!user || user.disabled) throw new AppError(ErrorCode.NOT_FOUND, 'No such player.');
+    return String(user._id);
+  },
+
+  /**
    * Sends a request, or accepts one that is already waiting.
    *
    * Requesting somebody who has already requested you is the same gesture as
@@ -160,7 +220,8 @@ export const friendService = {
     await FriendshipModel.findOneAndUpdate(
       pair,
       { ...pair, status: 'BLOCKED', blockedById: userId, requesterId: userId },
-      { upsert: true, new: true },
+      // The updated document is not used, so there is nothing to return.
+      { upsert: true },
     ).exec();
 
     logger.info({ userId, targetId }, 'player blocked');

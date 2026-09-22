@@ -63,9 +63,23 @@ export async function listFriends(req: Request, res: Response): Promise<void> {
   ok(res, await friendService.list(userId), 'OK');
 }
 
+/**
+ * Sends a friend request, by id or by username.
+ *
+ * A person types a name; the client usually holds an id. Both are accepted on
+ * the one endpoint rather than adding a lookup route, because a username
+ * resolver of its own would be a clean way to enumerate which accounts exist.
+ * Here the name never produces a distinguishable answer: an unknown username, a
+ * disabled account and a block all fail the same way.
+ */
 export async function requestFriend(req: Request, res: Response): Promise<void> {
   const { userId } = currentUser(req);
-  ok(res, await friendService.request(userId, req.body.userId), 'Request sent.');
+  const body = req.body as { userId?: string; username?: string };
+
+  const targetId =
+    body.userId ?? (await friendService.findIdByUsername(body.username as string));
+
+  ok(res, await friendService.request(userId, targetId), 'Request sent.');
 }
 
 export async function acceptFriend(req: Request, res: Response): Promise<void> {
@@ -85,4 +99,17 @@ export async function blockPlayer(req: Request, res: Response): Promise<void> {
   const { userId } = currentUser(req);
   await friendService.block(userId, req.body.userId);
   okEmpty(res, 'Blocked.');
+}
+
+/** Blocks this player placed. Never blocks placed on them - see the service. */
+export async function listBlocked(req: Request, res: Response): Promise<void> {
+  const { userId } = currentUser(req);
+  ok(res, await friendService.listBlocked(userId), 'OK');
+}
+
+export async function unblockPlayer(req: Request, res: Response): Promise<void> {
+  const { userId } = currentUser(req);
+  const { id } = validated<{ id: string }>(res, 'params');
+  await friendService.unblock(userId, id);
+  okEmpty(res, 'Unblocked.');
 }

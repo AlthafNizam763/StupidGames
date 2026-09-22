@@ -51,6 +51,7 @@ export interface GameState {
 
   /* -------------------------------------------------------- actions - */
   startTask: (taskId: string) => Promise<TaskPuzzle>;
+  closeTask: () => void;
   submitStep: (values: number[], elapsedMs: number) => Promise<TaskPuzzle | null>;
   eliminate: (targetId: string) => Promise<void>;
   reportBody: (bodyId: string) => Promise<void>;
@@ -119,6 +120,22 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   reset: () =>
     set({ snapshot: null, self: null, chat: [], result: null, votingResult: null, puzzle: null }),
+
+  /**
+   * Dismisses the objective panel.
+   *
+   * Client-only, and correctly so: the server has no notion of a panel being
+   * open. It issued a puzzle and is waiting to verify a submission, and walking
+   * away from a terminal is not an action it needs to hear about - re-opening
+   * simply generates a fresh puzzle over the old one, which also restarts the
+   * minimum-time floor. Abandoning a task therefore costs time rather than
+   * saving it, so there is nothing to police here.
+   *
+   * A method rather than callers reaching for `setState` directly, so that if
+   * closing ever does need to tell the server something, there is one place it
+   * goes.
+   */
+  closeTask: () => set({ puzzle: null }),
 
   /* ---------------------------------------------------------- actions - */
 
