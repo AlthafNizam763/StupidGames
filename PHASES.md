@@ -591,3 +591,13 @@ The symptom is not a build failure. It is 307 type errors in the server, every o
 This is reachable from an ordinary `rm -rf dist`, and more importantly from a CI cache that restores `.tsbuildinfo` without restoring `dist` — which is a normal thing for a cache to do, since `dist` is usually gitignored and `.tsbuildinfo` is small. Both workspaces now have a `prebuild` that removes the two together, and the fix was verified by reproducing the exact failure first and confirming it no longer occurs.
 
 A build that succeeds while producing nothing is the worst available outcome, because every downstream check is then testing the previous artefact.
+
+### A root type-check that could not be trusted mid-change
+
+`npm run type-check` ran each workspace's checker without building `shared` first. But `server` and `web` resolve `@voidline/shared` to `shared/dist`, so an export added to the source and not yet built is invisible to every dependent — and the checker reports it as a module resolution failure rather than as a stale build.
+
+The symptom is disproportionate: one unbuilt export produces eight type errors and a long tail of failing server tests, all of them `Cannot find module '@voidline/shared'`. It looks like the repository is badly broken rather than like a build step being owed.
+
+That cost real time. Three sessions were working in this tree, and two separate red builds were each attributed to a different session's in-progress work and dismissed, because the failure looks nothing like its cause. `type-check` now builds `shared` first, which is the only order in which checking a dependent means anything.
+
+Found by the third session, which diagnosed its own red tree rather than leaving it to be misread.

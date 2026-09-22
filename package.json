@@ -18,7 +18,7 @@
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w shared && npm run build --workspaces --if-present",
     "build:shared": "npm run build -w shared",
-    "type-check": "npm run type-check --workspaces --if-present",
+    "type-check": "npm run build -w shared && npm run type-check --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "clean": "rimraf \"{shared,server,web}/dist\" \"web/.next\" \"**/*.tsbuildinfo\""
