@@ -2,8 +2,33 @@
   "name": "@voidline/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Next.js client. Implemented in PHASE 2.",
+  "description": "VOIDLINE web client: Next.js App Router UI plus a Canvas game renderer.",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit"
+  },
   "dependencies": {
-    "@voidline/shared": "*"
+    "@voidline/shared": "*",
+    "clsx": "^2.1.1",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.5",
+    "prettier": "^3.4.2",
+    "prettier-plugin-tailwindcss": "^0.6.11",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.3"
   }
 }

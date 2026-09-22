@@ -1,0 +1,269 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   VOIDLINE design tokens
+   ---------------------------------------------------------------------------
+   Dark sci-fi, atmospheric, restrained. One accent (signal) carries almost all
+   emphasis; alert is reserved for danger and the Saboteur faction so that a red
+   element on screen always means something.
+
+   Deliberately absent: glassmorphism, layered gradients, heavy shadows, 3D
+   chrome. The interface should read as instrumentation on a station, not as a
+   dashboard trying to impress.
+   =========================================================================== */
+
+@theme {
+  /* -- surfaces: near-black blue, warming very slightly as it rises ------- */
+  --color-void-950: #05070c;
+  --color-void-900: #0a0e16;
+  --color-void-850: #0f1520;
+  --color-void-800: #141b27;
+  --color-void-700: #1d2635;
+  --color-void-600: #2a3547;
+  --color-void-500: #3b4860;
+
+  /* -- text --------------------------------------------------------------- */
+  --color-ink: #e8edf7;
+  --color-ink-muted: #9facc2;
+  --color-ink-faint: #667489;
+
+  /* -- accents ------------------------------------------------------------ */
+  /* Primary action, systems nominal, the Operator faction. */
+  --color-signal: #3fe0bc;
+  --color-signal-dim: #2bb397;
+  --color-signal-glow: #3fe0bc26;
+
+  /* Danger, destructive actions, critical sabotage, the Saboteur faction. */
+  --color-alert: #ff5c74;
+  --color-alert-dim: #d63f56;
+  --color-alert-glow: #ff5c7426;
+
+  /* Warnings and cooldowns. */
+  --color-caution: #ffc15e;
+
+  /* Information and links. */
+  --color-beacon: #6fa8ff;
+
+  /* -- type --------------------------------------------------------------- */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* -- radii: rounded, consistent ----------------------------------------- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --radius-2xl: 1.5rem;
+
+  /* -- elevation: one soft lift, not a shadow stack ----------------------- */
+  --shadow-panel: 0 1px 2px #00000040, 0 8px 24px -12px #00000080;
+  --shadow-lift: 0 2px 4px #00000040, 0 16px 40px -16px #000000a6;
+
+  /* -- motion ------------------------------------------------------------- */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ===========================================================================
+   Base
+   =========================================================================== */
+
+@layer base {
+  /*
+   * Horizontal overflow is a hard failure for this project (§6), so it is
+   * blocked at the root rather than chased component by component.
+   */
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Stops iOS rubber-banding the whole page behind the UI. */
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    background-color: var(--color-void-950);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* Mobile browsers fire a 300ms grey flash on tap without this. */
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  /*
+   * Focus is visible and consistent everywhere. Keyboard players and screen
+   * reader users get the same affordance the mouse gets (§46).
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::selection {
+    background-color: var(--color-signal);
+    color: var(--color-void-950);
+  }
+
+  /* Scrollbars, toned down to match the surfaces. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-void-600) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-void-600);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  /*
+   * Honour the OS setting. Motion in this game is decoration, never the only
+   * way something is communicated, so removing it costs nothing (§46).
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ===========================================================================
+   Utilities
+   =========================================================================== */
+
+/*
+ * Viewport height that survives a mobile address bar appearing and
+ * disappearing. `100vh` on mobile Safari is measured against the *collapsed*
+ * chrome, so a 100vh layout is taller than the screen until the user scrolls -
+ * which is exactly the bug §39 forbids. `dvh` tracks the real viewport.
+ *
+ * The `vh` line is a fallback for browsers without `dvh`. Lightning CSS strips
+ * it from the build when every targeted browser supports `dvh`, so do not be
+ * surprised to find only the `dvh` declaration in the shipped stylesheet.
+ */
+@utility min-h-screen-safe {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@utility h-screen-safe {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Safe-area padding: the notch and the home indicator, with a sane floor. */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0.75rem);
+}
+
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+
+@utility px-safe {
+  padding-left: max(env(safe-area-inset-left), 1rem);
+  padding-right: max(env(safe-area-inset-right), 1rem);
+}
+
+/*
+ * The minimum comfortable touch target: 44x44 CSS px (§6). Applied to anything
+ * tappable, including icon-only controls that would otherwise be 24px.
+ */
+@utility touch-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+/*
+ * Locks the page for gameplay: no pull-to-refresh, no rubber-banding, no
+ * accidental scroll while a thumb is on the joystick (§39).
+ */
+@utility viewport-locked {
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * The station backdrop: one very soft radial bloom, nothing more. Two gradients
+ * at low opacity read as depth; four read as a template.
+ */
+@utility station-backdrop {
+  background-color: var(--color-void-950);
+  background-image:
+    radial-gradient(60rem 40rem at 50% -10%, #12324a4d, transparent 70%),
+    radial-gradient(40rem 30rem at 85% 110%, #1a3a4f33, transparent 70%);
+  background-attachment: fixed;
+}
+
+/* A hairline rule that fades at both ends, for section separators. */
+@utility rule-fade {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-void-600), transparent);
+}
+
+/* ===========================================================================
+   Keyframes
+   =========================================================================== */
+
+@keyframes voidline-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes voidline-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@keyframes voidline-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-pulse-soft {
+  animation: voidline-pulse 2s var(--ease-out-soft) infinite;
+}
+
+@utility animate-rise {
+  animation: voidline-rise 0.35s var(--ease-out-soft) both;
+}
