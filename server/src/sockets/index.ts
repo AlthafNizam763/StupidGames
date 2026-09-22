@@ -3,6 +3,8 @@ import { Server, type Socket } from 'socket.io';
 import {
   ConnectionState,
   ErrorCode,
+  CHAT_RATE_LIMIT,
+  GamePhase,
   RECONNECT_GRACE_MS,
   SERVER_EVENT,
   SOCKET_NAMESPACE,
@@ -26,8 +28,40 @@ import {
 } from '../cluster/RoomDirectory';
 import { INSTANCE_ID, getRedis } from '../cluster/redis';
 import { authenticateSocket } from './auth';
-import { joinRoomPayload, kickPayload, parsePayload, readyPayload, settingsPayload } from './payloads';
+import {
+  chatPayload,
+  eliminatePayload,
+  joinRoomPayload,
+  kickPayload,
+  parsePayload,
+  puzzleSolutionPayload,
+  readyPayload,
+  repairPayload,
+  reportPayload,
+  sabotagePayload,
+  settingsPayload,
+  taskStartPayload,
+  votePayload,
+} from './payloads';
 import { SocketRateLimiter } from './rateLimit';
+import { createMatchManager } from './matchWiring';
+import { getMap } from '../game/maps';
+import {
+  handleChat,
+  handleEliminate,
+  handleEmergency,
+  handleMove,
+  handleRepair,
+  handleReport,
+  handleResume,
+  handleSabotage,
+  handleTaskStart,
+  handleTaskStep,
+  handleVote,
+  type GameContext,
+} from './gameHandlers';
+import type { MatchManager } from '../game/match/MatchManager';
+import { toSelfState, toSnapshot } from '../game/match/serialise';
 
 /**
  * The realtime layer.
@@ -88,6 +122,14 @@ export function getRoomDirectory(): RoomDirectory {
 
 /** Refreshes directory entries so a live room's claim does not expire. */
 let heartbeatTimer: NodeJS.Timeout | null = null;
+
+/** The match engine for this instance. Created with the socket server. */
+let matches: MatchManager | null = null;
+
+export function getMatchManager(): MatchManager | null {
+  return matches;
+}
+
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 function graceKey(userId: string, roomId: string): string {
@@ -145,6 +187,41 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
   }
 
   const namespace = io.of(SOCKET_NAMESPACE);
+
+  matches = createMatchManager(namespace);
+
+  /**
+   * Fan-out helpers handed to the gameplay handlers.
+   *
+   * `toPlayer` walks this instance's sockets rather than using a Socket.IO
+   * room per user. With the Redis adapter a player's other sockets could be on
+   * another instance - but a player's gameplay sockets are always here,
+   * because a room lives on one instance and sticky sessions keep them on it.
+   */
+  /*
+   * The two emits below are the only untyped ones in the codebase.
+   *
+   * `GameContext` is deliberately generic over event name and payload so the
+   * handlers can be tested with a fake context and have no dependency on
+   * Socket.IO. The cost is that this one boundary cannot be checked by the
+   * event map - so it is confined to these four lines, and every caller passes
+   * a `SERVER_EVENT` constant rather than a string literal.
+   */
+  type LooseEmitter = { emit: (event: string, payload: unknown) => void };
+
+  const gameContext: GameContext = {
+    matches,
+    toRoom: (roomId, event, payload) => {
+      (namespace.to(channel(roomId)) as unknown as LooseEmitter).emit(event, payload);
+    },
+    toPlayer: (userId, event, payload) => {
+      for (const [, socket] of namespace.sockets) {
+        if (socket.data.userId === userId) {
+          (socket as unknown as LooseEmitter).emit(event, payload);
+        }
+      }
+    },
+  };
 
   /* ------------------------------------------------------ handshake - */
 
@@ -344,10 +421,137 @@ export function createSocketServer(httpServer: HttpServer): GameServer {
       handle(ack, () => {
         const roomId = socket.data.roomId;
         if (!roomId) throw new AppError(ErrorCode.NOT_IN_ROOM);
-        // Runs every precondition and then reports honestly that the match
-        // engine is not built. See lobbyService.start.
-        lobbyService.start(userId, roomId);
+
+        const room = roomManager.getById(roomId);
+        if (!room) throw new AppError(ErrorCode.ROOM_NOT_FOUND);
+
+        // Host, phase, connected count and readiness - all re-checked here,
+        // never trusted from whatever the lobby screen decided to render.
+        const blocker = lobbyService.startBlocker(room, userId);
+        if (blocker) throw new AppError(blocker.code, blocker.message);
+
+        if (!matches) throw new AppError(ErrorCode.SERVICE_UNAVAILABLE);
+
+        roomManager.setPhase(room, GamePhase.STARTING);
+        const match = matches.start(room, getMap(room.settings.map));
+        room.matchId = match.id;
+
+        /*
+         * Each player is told the world and their own private slice in one
+         * message. Sent per socket rather than broadcast, because `self`         * differs for every recipient - it is the only payload in the game
+         * that carries a role.
+         */
+        for (const [, other] of namespace.sockets) {
+          const player = match.players.get(other.data.userId);
+          if (player && other.data.roomId === roomId) {
+            other.emit(SERVER_EVENT.GAME_START, {
+              snapshot: toSnapshot(match),
+              self: toSelfState(match, player),
+            });
+          }
+        }
+
+        broadcastRoom(room);
       }),
+    );
+
+    /* ------------------------------------------------- gameplay - */
+
+    socket.on('player:move', (input) => {
+      // No ack and no rate-limit wrapper: this fires 15 times a second and the
+      // sequence guard inside applyInput is the real protection.
+      handleMove(gameContext, userId, socket.data.roomId, input);
+    });
+
+    socket.on('player:eliminate', (payload, ack) =>
+      handle(ack, () => {
+        const { targetId } = parsePayload(eliminatePayload, payload);
+        handleEliminate(gameContext, userId, socket.data.roomId, targetId);
+      }),
+    );
+
+    socket.on('task:start', (payload, ack) =>
+      handle(ack, () => {
+        const { taskId } = parsePayload(taskStartPayload, payload);
+        return handleTaskStart(gameContext, userId, socket.data.roomId, taskId);
+      }),
+    );
+
+    socket.on('task:progress', (payload, ack) =>
+      handle(ack, () => {
+        const solution = parsePayload(puzzleSolutionPayload, payload);
+        const result = handleTaskStep(gameContext, userId, socket.data.roomId, {
+          taskId: solution.taskId,
+          step: solution.step,
+          values: solution.values,
+        });
+        return result.next;
+      }),
+    );
+
+    socket.on('task:complete', (payload, ack) =>
+      handle(ack, () => {
+        const solution = parsePayload(puzzleSolutionPayload, payload);
+        const result = handleTaskStep(gameContext, userId, socket.data.roomId, {
+          taskId: solution.taskId,
+          step: solution.step,
+          values: solution.values,
+        });
+        if (!result.completed) {
+          throw new AppError(ErrorCode.TASK_VERIFICATION_FAILED, 'That objective has more steps.');
+        }
+        return result.completed;
+      }),
+    );
+
+    socket.on('sabotage:start', (payload, ack) =>
+      handle(ack, () => {
+        const { type } = parsePayload(sabotagePayload, payload);
+        return handleSabotage(gameContext, userId, socket.data.roomId, type);
+      }),
+    );
+
+    socket.on('sabotage:repair', (payload, ack) =>
+      handle(ack, () => {
+        const { stationId } = parsePayload(repairPayload, payload);
+        return handleRepair(gameContext, userId, socket.data.roomId, stationId);
+      }),
+    );
+
+    socket.on('body:report', (payload, ack) =>
+      handle(ack, () => {
+        const { bodyId } = parsePayload(reportPayload, payload);
+        handleReport(gameContext, userId, socket.data.roomId, bodyId);
+      }),
+    );
+
+    socket.on('council:emergency', (ack) =>
+      handle(ack, () => {
+        handleEmergency(gameContext, userId, socket.data.roomId);
+      }),
+    );
+
+    socket.on('council:chat', (payload, ack) =>
+      handle(ack, () => {
+        const input = parsePayload(chatPayload, payload);
+        // Chat has its own per-channel budget on top of the global one, so a
+        // flood on one channel cannot silence another.
+        if (!limiter.allowChat(input.channel, CHAT_RATE_LIMIT.messages, CHAT_RATE_LIMIT.windowMs)) {
+          throw new AppError(ErrorCode.RATE_LIMITED, 'You are sending messages too quickly.');
+        }
+        return handleChat(gameContext, userId, socket.data.roomId, input.body);
+      }),
+    );
+
+    socket.on('council:vote', (payload, ack) =>
+      handle(ack, () => {
+        const input = parsePayload(votePayload, payload);
+        handleVote(gameContext, userId, socket.data.roomId, input.meetingId, input.target);
+      }),
+    );
+
+    socket.on('game:resume', (ack) =>
+      handle(ack, () => handleResume(gameContext, userId, socket.data.roomId)),
     );
 
     /* ------------------------------------------------ disconnect - */

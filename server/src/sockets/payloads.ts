@@ -1,4 +1,11 @@
-import { ROOM_CODE_LENGTH, SETTINGS_BOUNDS } from '@voidline/shared';
+import {
+  ChatChannel,
+  MAX_CHAT_MESSAGE_LENGTH,
+  ROOM_CODE_LENGTH,
+  SETTINGS_BOUNDS,
+  SKIP_VOTE,
+  SabotageType,
+} from '@voidline/shared';
 import { z } from 'zod';
 import { ErrorCode } from '@voidline/shared';
 import { AppError } from '../lib/AppError';
@@ -87,3 +94,67 @@ export function parsePayload<T>(schema: z.ZodType<T>, value: unknown): T {
 
   return result.data;
 }
+
+/* ------------------------------------------------------- gameplay - */
+
+export const eliminatePayload = z.object({
+  targetId: z.string().regex(/^[a-f0-9]{24}$/i),
+});
+
+export const taskStartPayload = z.object({
+  taskId: z.string().min(1).max(128),
+});
+
+/**
+ * A puzzle solution.
+ *
+ * `values` is capped at a length no puzzle uses. Without a ceiling, a client
+ * could send a million-element array and make the server's comparison the
+ * expensive part of a denial-of-service.
+ */
+export const puzzleSolutionPayload = z.object({
+  taskId: z.string().min(1).max(128),
+  step: z.number().int().min(0).max(16),
+  values: z.array(z.number().int().min(-1000).max(1000)).max(32),
+  elapsedMs: z.number().int().min(0).max(600_000),
+});
+
+export const sabotagePayload = z.object({
+  type: z.enum([
+    SabotageType.REACTOR_FAILURE,
+    SabotageType.OXYGEN_LEAK,
+    SabotageType.COMMUNICATION_FAILURE,
+    SabotageType.POWER_FAILURE,
+    SabotageType.DOOR_LOCKDOWN,
+  ]),
+});
+
+export const repairPayload = z.object({
+  stationId: z.string().min(1).max(128),
+});
+
+export const reportPayload = z.object({
+  bodyId: z.string().min(1).max(128),
+});
+
+export const chatPayload = z.object({
+  channel: z.enum([
+    ChatChannel.PROXIMITY,
+    ChatChannel.COUNCIL,
+    ChatChannel.DEAD,
+    ChatChannel.SABOTEUR,
+  ]),
+  body: z.string().min(1).max(MAX_CHAT_MESSAGE_LENGTH),
+});
+
+/**
+ * A ballot.
+ *
+ * The target is either a player id or the literal SKIP. Accepting a free string
+ * would let a vote name something that is not a player and leave the tally to
+ * work out what that meant.
+ */
+export const votePayload = z.object({
+  meetingId: z.string().min(1).max(128),
+  target: z.union([z.literal(SKIP_VOTE), z.string().regex(/^[a-f0-9]{24}$/i)]),
+});

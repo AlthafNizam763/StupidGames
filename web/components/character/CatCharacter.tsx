@@ -45,11 +45,13 @@ export type CatPose = 'SIT' | 'CROUCH';
 /** Fur, eyes and trim. One palette, so every expression is the same animal. */
 const FUR = '#2E2740';
 const FUR_LIGHT = '#3E3457';
+/** The head sits a shade lighter than the body, so the two never merge. */
+const FUR_HEAD = '#372F4C';
 const FUR_DARK = '#221C30';
-const EYE = '#FFC15E';
+const EYE = '#FFA621';
 const PINK = '#FF9EB5';
 const COLLAR = '#FF5C74';
-const TAG = '#FFC15E';
+const TAG = '#FFA621';
 
 export interface CatCharacterProps {
   expression?: CatExpression;
@@ -104,7 +106,7 @@ function Body({ crouched }: { crouched: boolean }) {
     // Low and long: the shape of something moving along a wall.
     return (
       <g>
-        <ellipse cx="50" cy="112" rx="34" ry="17" fill={FUR} />
+        <ellipse cx="50" cy="112" rx="34" ry="17" fill={FUR} stroke={FUR_DARK} strokeWidth="2.5" />
         <ellipse cx="50" cy="107" rx="28" ry="11" fill={FUR_LIGHT} opacity="0.35" />
         <Paw x={26} y={124} />
         <Paw x={44} y={126} />
@@ -116,7 +118,7 @@ function Body({ crouched }: { crouched: boolean }) {
   return (
     <g>
       {/* Sitting: a teardrop, wide at the base. */}
-      <path d="M50 78c17 0 27 16 27 31 0 12-12 18-27 18s-27-6-27-18c0-15 10-31 27-31Z" fill={FUR} />
+      <path d="M50 78c17 0 27 16 27 31 0 12-12 18-27 18s-27-6-27-18c0-15 10-31 27-31Z" fill={FUR} stroke={FUR_DARK} strokeWidth="2.5" />
       <path d="M50 84c11 0 18 11 18 22 0-9-7-16-18-16s-18 7-18 16c0-11 7-22 18-22Z" fill={FUR_LIGHT} opacity="0.4" />
       <Paw x={34} y={120} />
       <Paw x={56} y={120} />
@@ -160,7 +162,7 @@ function Head({ crouched }: { crouched: boolean }) {
   const cy = crouched ? 78 : 50;
   return (
     <g>
-      <ellipse cx="50" cy={cy} rx="31" ry="27" fill={FUR} />
+      <ellipse cx="50" cy={cy} rx="31" ry="27" fill={FUR_HEAD} stroke={FUR_DARK} strokeWidth="2.5" />
       {/* Cheek fluff: two scallops that break the perfect oval. */}
       <path
         d={`M19 ${cy + 4}c-4 3-5 7-3 10 3-3 6-4 9-4Zm62 0c4 3 5 7 3 10-3-3-6-4-9-4Z`}
@@ -358,7 +360,7 @@ function Slit({ cx, ry }: { cx: number; ry: number }) {
 function Nose() {
   return (
     <g>
-      <path d="M46 58h8l-4 5Z" fill={PINK} />
+      <path d="M44.5 56.5h11l-5.5 6.5Z" fill={PINK} stroke={FUR_DARK} strokeWidth="1.2" strokeLinejoin="round" />
       <path d="M50 63v4" stroke={FUR_DARK} strokeWidth="1.8" strokeLinecap="round" />
     </g>
   );
@@ -372,9 +374,9 @@ function Mouth({ expression }: { expression: CatExpression }) {
       // Up on one side only, with a tooth. The signature.
       return (
         <g>
-          <path d="M50 67c4 0 9-1 12-5" {...stroke} />
-          <path d="M44 67c-2 0-4-1-5-2" {...stroke} />
-          <path d="M58 64l3 5-5-1Z" fill="#FFFFFF" />
+          {/* One long curve lifting to the left, and a tooth at the high end. */}
+          <path d="M39 65q6 5 12 1t10 -8" {...stroke} strokeWidth={2.8} />
+          <path d="M58 57.5l4 3.5-5.5 1.5Z" fill="#FFFFFF" stroke={FUR_DARK} strokeWidth="1" strokeLinejoin="round" />
         </g>
       );
 
@@ -415,7 +417,7 @@ function Mouth({ expression }: { expression: CatExpression }) {
     case 'NORMAL':
     default:
       // The classic two-curve cat mouth.
-      return <path d="M50 67q-4 4-7 0M50 67q4 4 7 0" {...stroke} />;
+      return <path d="M50 66q-6 6-10.5 1M50 66q6 6 10.5 1" {...stroke} strokeWidth={2.8} />;
   }
 }
 

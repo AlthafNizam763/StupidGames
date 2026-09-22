@@ -1,11 +1,6 @@
 import { cn } from '@/lib/cn';
-import {
-  derivedAppearance,
-  hairColour,
-  skinTone,
-  uniformColour,
-  type CharacterAppearance,
-} from './appearance';
+import type { CharacterAppearance } from '@voidline/shared';
+import { deriveAppearance, hairPaint, skinPaint, uniformColour } from './appearance';
 import { HumanCharacter, type Expression, type Pose } from './HumanCharacter';
 
 /**
@@ -45,7 +40,7 @@ export function PlayerCharacter({
   labelled = false,
   className,
 }: PlayerCharacterProps) {
-  const resolved = appearance ?? derivedAppearance(userId, avatarId);
+  const resolved = appearance ?? deriveAppearance(userId);
 
   return (
     <HumanCharacter
@@ -77,10 +72,10 @@ export function CharacterBust({
   labelled = false,
   className,
 }: Omit<PlayerCharacterProps, 'pose' | 'animated'>) {
-  const resolved = appearance ?? derivedAppearance(userId, avatarId);
+  const resolved = appearance ?? deriveAppearance(userId);
   const uniform = uniformColour(avatarId);
-  const skin = skinTone(resolved.skin);
-  const hair = hairColour(resolved.hairColour);
+  const skin = skinPaint(resolved.skin);
+  const hair = hairPaint(resolved.hairColour);
 
   return (
     <span

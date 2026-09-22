@@ -1,5 +1,6 @@
 import type {
   AnimationState,
+  CharacterAppearance,
   ChatMessage,
   ConnectionState,
   DeadBody,
@@ -30,6 +31,8 @@ export interface MatchPlayer {
   userId: string;
   username: string;
   avatar: string;
+  /** Public. Every client draws every player, Saboteur included. */
+  appearance: CharacterAppearance;
   level: number;
 
   /** Secret. Reaches only this player's own socket, and their allies'. */

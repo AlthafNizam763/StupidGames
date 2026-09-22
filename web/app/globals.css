@@ -60,7 +60,7 @@
   --color-cat-dim: #8b3fe0;
   --color-cat-glow: #b06bff26;
   /* The Cat's eyes, and the only place this exact gold is used. */
-  --color-cat-eye: #ffc15e;
+  --color-cat-eye: #ffa621;
 
   /* -- type --------------------------------------------------------------- */
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
