@@ -1,5 +1,5 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
-import { levelForXp } from '@voidline/shared';
+import { DEFAULT_AVATAR_ID, levelForXp } from '@voidline/shared';
 
 /**
  * The user account.
@@ -24,6 +24,25 @@ const statsSchema = new Schema(
     saboteurWins: { type: Number, default: 0, min: 0 },
     eliminations: { type: Number, default: 0, min: 0 },
     objectivesCompleted: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
+);
+
+/**
+ * Counters that exist only to satisfy achievement criteria.
+ *
+ * Kept apart from `stats` because `stats` is published on every profile: a new
+ * achievement should not widen the public contract, and these numbers would
+ * tell other players things about a match they were not in.
+ *
+ * Written by the match-end service in Phase 21.
+ */
+const achievementProgressSchema = new Schema(
+  {
+    matchesSurvived: { type: Number, default: 0, min: 0 },
+    decidingVotesAgainstSaboteurs: { type: Number, default: 0, min: 0 },
+    perfectOperatorWins: { type: Number, default: 0, min: 0 },
+    untouchedSaboteurWins: { type: Number, default: 0, min: 0 },
   },
   { _id: false },
 );
@@ -58,12 +77,13 @@ const userSchema = new Schema(
     },
     avatar: {
       type: String,
-      default: 'operator-01',
+      default: DEFAULT_AVATAR_ID,
     },
     xp: { type: Number, default: 0, min: 0 },
     level: { type: Number, default: 1, min: 1 },
     stats: { type: statsSchema, default: () => ({}) },
     achievements: { type: [achievementSchema], default: [] },
+    achievementProgress: { type: achievementProgressSchema, default: () => ({}), select: false },
     /** Soft ban. Checked at sign-in and at socket handshake. */
     disabled: { type: Boolean, default: false },
   },

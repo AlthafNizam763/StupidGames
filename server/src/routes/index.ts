@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { liveness, readiness } from '../controllers/healthController';
 import { authRouter } from './auth.routes';
+import { profileRouter, userRouter } from './user.routes';
 
 /**
  * Route wiring.
@@ -18,7 +19,7 @@ healthRouter.get('/ready', readiness);
 /**
  * The versioned API surface.
  *
- * Phase 5 mounts `/users` and `/profile`, Phase 6 `/rooms`, Phase 22
+ * Phase 6 mounts `/rooms`, Phase 22
  * `/leaderboard`. Requests to anything unmounted fall through to the 404
  * handler, which returns the standard envelope rather than Express's HTML
  * error page.
@@ -26,3 +27,5 @@ healthRouter.get('/ready', readiness);
 export const apiRouter: Router = Router();
 
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/users', userRouter);
+apiRouter.use('/profile', profileRouter);

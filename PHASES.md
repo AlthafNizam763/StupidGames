@@ -8,8 +8,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 2 | Next.js frontend foundation | **done** |
 | 3 | Node.js backend foundation | **done** |
 | 4 | Authentication | **done** |
-| 5 | Home / Profile / Settings | next |
-| 6 | Room creation and joining | |
+| 5 | Home / Profile / Settings | **done** |
+| 6 | Room creation and joining | next |
 | 7 | Lobby | |
 | 8 | Socket.IO architecture | |
 | 9 | Canvas game engine | |
@@ -152,3 +152,41 @@ Real accounts, end to end.
 **Missing JWT secrets are fatal in production and random in development.** A hard-coded development default is the value that eventually ships; 48 random bytes plus a loud warning is not, and the only cost is that a restart ends dev sessions.
 
 **Route guards are convenience, not security.** Everything they protect is enforced server-side. A guard running in the browser can be deleted by anyone who opens devtools.
+
+## Phase 5 — what was built
+
+The three account screens (§10, §33, §37), plus the avatar system.
+
+**Shared**
+- Avatar roster: eight preset ids with suit colours, chosen to stay distinguishable from one another and under common colour vision deficiencies. The Canvas renderer will use the same colours in Phase 9.
+- Achievement *presentation* — names, descriptions, locked hints. The criteria are not here.
+
+**Server**
+- `GET /api/users/me`, `PATCH /api/users/me` (username and avatar only), `GET /api/profile/:userId`.
+- `achievementService`: unlock criteria held server-side, evaluated against counters the server writes itself, with partial-progress reporting for the counted achievements.
+- A private `achievementProgress` subdocument on `User`, `select: false`, kept out of the published profile shape.
+
+**Client**
+- Original SVG Operator-suit avatars in eight colours, drawn inline so one silhouette serves every size from a 24px lobby row to a 96px profile header.
+- Full home screen: player card, XP bar, PLAY as the primary CTA, and the six secondary destinations.
+- Profile screen with the full record, achievement grid, and inline editing of username and avatar.
+- Settings screen covering audio, gameplay, controls and language, on a persisted device-local store.
+- i18n scaffolding: locale catalogue, flat dotted keys, `t()` with interpolation, English as the typed source of truth.
+
+**Verification**: 20 new server tests (66 total) and a 29-check end-to-end pass over real HTTP.
+
+## Decisions made in Phase 5
+
+**Avatars are preset ids, never URLs or uploads.** A client-supplied avatar URL is a way to make every other player's browser fetch something the attacker controls. The server validates the id against the shared roster, and there is a test that an avatar of `https://evil.example/x.gif` is refused.
+
+**`PATCH /api/users/me` reads two fields and ignores everything else.** It does not merge the request body into the document. A test sends `xp: 999999, level: 99, stats: {...}, disabled: true` alongside a legitimate avatar change and asserts the avatar changed while nothing else did — which is the difference between an update endpoint and a way to award yourself anything.
+
+**A disabled account's profile reads as "not found", not "disabled".** Otherwise the profile page becomes a way for anyone to confirm a ban.
+
+**Achievement counters are separate from public stats.** `stats` is published on every profile; adding a counter there to satisfy a new achievement would widen the public contract and tell other players about matches they were not in.
+
+**Settings are device-local, not synced.** Joystick sensitivity and control position describe the device, not the account. Someone playing on a phone and a desktop wants different values, and syncing would fight that.
+
+**Home shows unbuilt destinations as disabled tiles marked "Soon".** §10 specifies the full set of destinations, and a tile that navigates to a 404 is worse than one that says it is not ready yet. PLAY stays visually dominant as the primary CTA but is disabled until rooms exist.
+
+**i18n is scaffolding, and says so.** The locale preference and the lookup are real and exercised end to end by the settings screen. The rest of the app still holds English literals — extracting them is a mechanical pass, and doing it half-way would leave a codebase where some text translates and some does not.
