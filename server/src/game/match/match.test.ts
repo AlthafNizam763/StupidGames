@@ -26,6 +26,7 @@ import {
 import { assignRoles, secureShuffle } from '../RoleManager';
 import { repair, startSabotage } from '../SabotageManager';
 import { assignTasks, generatePuzzle, openTask, submitStep, teamProgress } from '../TaskManager';
+import type { PuzzlePrompt } from '@voidline/shared';
 import { evaluate } from '../WinConditionManager';
 import { ORBITAL_09 } from '../maps';
 import { toDelta, toSelfState, toSnapshot } from './serialise';
@@ -309,22 +310,83 @@ describe('objectives', () => {
     assert.equal(match.taskTotal, expected);
   });
 
-  it('never sends the answer in the puzzle prompt for a SELECT puzzle', () => {
-    const match = makeMatch(4, 1);
-    assignTasks(match, 9);
+  /**
+   * Every puzzle must be solvable from its prompt alone.
+   *
+   * This is the test that was missing, and its absence shipped a bug. The
+   * SELECT puzzle chose a random subset of the options and sent nothing that
+   * identified it, so an honest player had a 1-in-495 guess. Every existing
+   * test passed: the server accepted a correct answer, refused a wrong one,
+   * and kept the answer out of the prompt. None of them asked whether a person
+   * could get there.
+   *
+   * So this solves each puzzle the way a player would - from the prompt, with
+   * no access to the stored answer - and checks it is the answer. A rule that
+   * cannot be written here is a rule a player cannot apply either.
+   */
+  function solveFromPrompt(prompt: PuzzlePrompt): number[] {
+    switch (prompt.kind) {
+      case 'ALIGN':
+        // Match the dials to the targets you were shown.
+        return [...prompt.targets!];
+      case 'ORDER':
+        // Put the scrambled readings in ascending order.
+        return [...prompt.options].sort((a, b) => a - b);
+      default:
+        // Take every reading at or above the reference.
+        return prompt.options.filter((v) => v >= prompt.reference!).sort((a, b) => a - b);
+    }
+  }
 
-    const operator = operatorsOf(match)[0]!;
-    const selectTask = operator.tasks.find((task) => task.type === 'SECURITY_SCAN');
+  const EVERY_TASK_TYPE = [
+    'REACTOR_CALIBRATION',
+    'SIGNAL_ROUTING',
+    'OXYGEN_BALANCING',
+    'DATA_RECOVERY',
+    'POWER_SYNCHRONIZATION',
+    'SECURITY_SCAN',
+    'NAVIGATION_CALIBRATION',
+  ] as const;
 
-    if (selectTask) {
-      const { prompt, answer } = generatePuzzle(selectTask);
-      // The answer is a subset of the options, and `targets` - the field that
-      // would reveal it - is absent.
-      assert.equal(prompt.targets, undefined);
-      assert.ok(answer.every((value) => prompt.options.includes(value)));
+  for (const type of EVERY_TASK_TYPE) {
+    it(`can be solved from the prompt alone: ${type}`, () => {
+      // Repeated, because the failure being guarded against is probabilistic:
+      // a puzzle that is usually solvable and sometimes ambiguous is still
+      // broken, and one draw would not show it.
+      for (let i = 0; i < 200; i++) {
+        const task = { id: 't', type, zone: 'HUB', terminalId: 'x', duration: 1, steps: 1, progress: 0, status: 'PENDING' } as unknown as Parameters<typeof generatePuzzle>[0];
+        const { prompt, answer } = generatePuzzle(task);
+
+        assert.deepEqual(
+          solveFromPrompt(prompt),
+          answer,
+          `a player following the rule did not reach the answer for ${type}`,
+        );
+      }
+    });
+  }
+
+  it('gives a SELECT puzzle exactly as many qualifying options as it has slots', () => {
+    for (let i = 0; i < 200; i++) {
+      const task = { id: 't', type: 'SECURITY_SCAN', zone: 'HUB', terminalId: 'x', duration: 1, steps: 1, progress: 0, status: 'PENDING' } as unknown as Parameters<typeof generatePuzzle>[0];
+      const { prompt } = generatePuzzle(task);
+
+      const qualifying = prompt.options.filter((v) => v >= prompt.reference!);
+
+      // Fewer would make the puzzle impossible; more would make it ambiguous,
+      // and an ambiguous puzzle refuses a player who followed the rule.
+      assert.equal(qualifying.length, prompt.slots);
+      assert.equal(new Set(prompt.options).size, prompt.options.length, 'a tie could make it ambiguous');
     }
   });
 
+  it('still keeps the ALIGN answer out of a SELECT prompt', () => {
+    const task = { id: 't', type: 'SECURITY_SCAN', zone: 'HUB', terminalId: 'x', duration: 1, steps: 1, progress: 0, status: 'PENDING' } as unknown as Parameters<typeof generatePuzzle>[0];
+    const { prompt, answer } = generatePuzzle(task);
+
+    assert.equal(prompt.targets, undefined, 'targets would hand over the answer wholesale');
+    assert.ok(answer.every((value) => prompt.options.includes(value)));
+  });
   it('refuses a submission from too far away', () => {
     const match = makeMatch(4, 1);
     assignTasks(match, 2);

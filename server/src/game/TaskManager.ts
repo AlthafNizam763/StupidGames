@@ -170,18 +170,34 @@ export function generatePuzzle(
     case PuzzleKind.SELECT:
     default: {
       /*
-       * The only genuinely unforgeable shape: the answer is a subset the client
-       * is never told. A modified client can submit, but cannot know what to
-       * submit, so it has to actually solve the puzzle it was shown.
+       * Select every reading at or above the reference.
+       *
+       * The rule has to be derivable from the prompt. An earlier version chose
+       * a random subset and sent no way to identify it, which made the puzzle
+       * a 1-in-495 guess - unsolvable by an honest player, and reported as
+       * "unforgeable" in this very comment because the answer was secret. It
+       * was not unforgeable; it was unsolvable, and a script guessing had the
+       * same odds as a person.
+       *
+       * The reference is the lowest qualifying reading, so exactly `slots`
+       * options satisfy it - the values are unique, so there are no ties to
+       * make the answer ambiguous. Sending the threshold rather than leaving
+       * the rule to the client's copy means the two cannot drift: there is one
+       * statement of what qualifies, and it is the one being verified.
        */
-      const options = uniqueValues(shape.slots * 3);
-      const answer = shuffleTerminals(options).slice(0, shape.slots).sort((a, b) => a - b);
+      const options = shuffleTerminals(uniqueValues(shape.slots * 3));
+      const ascending = [...options].sort((a, b) => a - b);
+
+      // Already ascending, which is the order `answersMatch` compares in.
+      const answer = ascending.slice(-shape.slots);
+
       return {
         answer,
         prompt: {
           kind: PuzzleKind.SELECT,
           slots: shape.slots,
           options,
+          reference: answer[0]!,
           duration: shape.duration,
           minimumSeconds,
         },
