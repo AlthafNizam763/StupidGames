@@ -2,8 +2,37 @@
   "name": "@voidline/server",
   "version": "0.1.0",
   "private": true,
-  "description": "Authoritative Node.js + Express + Socket.IO game server. Implemented in PHASE 3.",
+  "description": "Authoritative VOIDLINE game server: Express REST API, Socket.IO realtime layer, MongoDB persistence.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
   "dependencies": {
-    "@voidline/shared": "*"
+    "@voidline/shared": "*",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "mongoose": "^9.10.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.39.5",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.70.1"
   }
 }

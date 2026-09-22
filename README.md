@@ -6,7 +6,7 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASE 2 of 28 complete.** The monorepo, the protocol contract and the Next.js client foundation exist and build. The game server (Phase 3) is not implemented yet, so the splash screen reports the uplink as unavailable until it is. `PHASES.md` tracks what is done and what is next.
+> **Status: PHASE 3 of 28 complete.** The monorepo, the protocol contract, the Next.js client foundation and the Express server foundation all exist and build. Authentication (Phase 4) is next, so there are no API endpoints beyond health yet. `PHASES.md` tracks what is done and what is next.
 
 ## Requirements
 
@@ -23,14 +23,14 @@ cp .env.example .env # then fill in the values
 npm run build        # compiles the shared protocol package
 ```
 
-`npm run dev:web` starts the client on http://localhost:3000 now. `npm run dev` starts the client and the server together, and works once the server exists (Phase 3).
+`npm run dev` starts the client on http://localhost:3000 and the server on http://localhost:4000 together. MongoDB is optional for now: the server serves without it and reports itself as not-ready until it connects.
 
 ## Workspaces
 
 | Path      | Package             | What it is |
 | --------- | ------------------- | ---------- |
 | `shared/` | `@voidline/shared`  | The client/server contract: event names, payload types, enums, error codes, tuning constants, settings validation. Dependency-free and free of game logic. |
-| `server/` | `@voidline/server`  | The authoritative game server: Express REST API, Socket.IO realtime layer, MongoDB persistence. *(Phase 3)* |
+| `server/` | `@voidline/server`  | The authoritative game server: Express REST API, MongoDB persistence, and the Socket.IO realtime layer *(realtime arrives in Phase 8)*. |
 | `web/`    | `@voidline/web`     | The Next.js client: App Router UI plus a Canvas game renderer *(Canvas arrives in Phase 9)*. |
 
 ## Scripts

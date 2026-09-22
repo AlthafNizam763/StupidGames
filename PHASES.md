@@ -6,8 +6,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | - | ----- | ------ |
 | 1 | Repository audit + architecture | **done** |
 | 2 | Next.js frontend foundation | **done** |
-| 3 | Node.js backend foundation | next |
-| 4 | Authentication | |
+| 3 | Node.js backend foundation | **done** |
+| 4 | Authentication | next |
 | 5 | Home / Profile / Settings | |
 | 6 | Room creation and joining | |
 | 7 | Lobby | |
@@ -89,3 +89,31 @@ The Next.js client foundation. No screen beyond the splash, and no fake data any
 
 **ESLint is pinned to 9.x.** ESLint 10 crashes `eslint-plugin-react`, which `eslint-config-next@16` depends on. A working linter on the version Next supports beats a newer one that cannot run.
 
+
+## Phase 3 — what was built
+
+The authoritative server's foundation. No game logic and no authentication yet — those are Phases 4 onward.
+
+- Express 5 + TypeScript on Node, with `tsx` for development and a separate build tsconfig so tests are type-checked without being compiled into `dist`.
+- **Config** (`config/env.ts`): the environment is parsed with Zod at startup and the process refuses to boot on bad configuration. It validates only what the server actually reads today; later phases extend the schema as they add variables.
+- **Error handling**: one `AppError` type that takes its HTTP status from the shared contract, and one error handler that is the single exit point for every failure. Anything that is not an `AppError` is treated as a bug — logged in full, reported as a bare `INTERNAL_ERROR`. No stack trace reaches a response in any environment; the correlation id does.
+- **Response envelope** (`lib/respond.ts`): every endpoint returns the shape in API.md, from one place.
+- **Middleware**: correlation id, structured request logging, Helmet, CORS against the configured allowlist, body limits, a MongoDB-operator guard, Zod validation helpers, and per-IP rate limiting using the shared budgets.
+- **Database** (`db/connect.ts`): Mongoose connection with background retry and exponential backoff.
+- **Model + repository**: the `User` schema from DATABASE.md and a `UserRepository` with explicit projections — one concrete vertical slice proving the layering, ready for Phase 4 to build auth on top.
+- **Health**: `/health` (liveness, touches no database) and `/health/ready` (readiness, reflects the real connection state).
+- 21 unit tests covering the error mapping, the envelope and the injection guard.
+
+## Decisions made in Phase 3
+
+**Liveness and readiness are different endpoints.** A database blip should keep traffic away from an instance, not restart it. The server therefore stays up when Mongo is unreachable, retries in the background, and reports `/health/ready` as 503 until it connects. Conflating the two is how a short outage becomes a crash loop.
+
+**The injection guard rejects rather than strips.** `express-mongo-sanitize` is unmaintained and writes to `req.query`, which is a read-only getter in Express 5, so it throws on this stack. The replacement refuses any payload containing a `$`-prefixed or dotted key: a request carrying `{"email": {"$ne": null}}` is not a typo, and silently rewriting it into something that works hides an attack that belongs in the logs. It is defence in depth — Zod schemas at each endpoint are the primary control.
+
+**No `asyncHandler` wrapper.** Express 5 forwards rejected promises from async handlers to the error handler natively. Wrapping every route in a helper would be Express 4 muscle memory.
+
+**Helmet's resource policy is set to `cross-origin`.** The client is served from a different origin, and Helmet's `same-origin` default makes the browser discard every response before CORS is ever consulted.
+
+**`trust proxy` is 1, not `true`.** The deploy targets sit behind exactly one proxy. Trusting every hop would let a client forge `X-Forwarded-For` and escape rate limiting entirely.
+
+**Mongoose 9 pre-save hooks have no `next` callback.** The signature is `(this, opts) => void | Promise<void>`; the callback form was removed.
