@@ -1,0 +1,9 @@
+{
+  "name": "@voidline/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Authoritative Node.js + Express + Socket.IO game server. Implemented in PHASE 3.",
+  "dependencies": {
+    "@voidline/shared": "*"
+  }
+}

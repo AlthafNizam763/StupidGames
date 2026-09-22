@@ -1,0 +1,21 @@
+{
+  "name": "@voidline/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wire protocol contract shared by the VOIDLINE client and server: event names, payload types, enums, error codes and settings bounds. Intentionally dependency-free and free of game logic.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist"
+  }
+}

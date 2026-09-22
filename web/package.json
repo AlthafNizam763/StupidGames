@@ -1,0 +1,9 @@
+{
+  "name": "@voidline/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js client. Implemented in PHASE 2.",
+  "dependencies": {
+    "@voidline/shared": "*"
+  }
+}

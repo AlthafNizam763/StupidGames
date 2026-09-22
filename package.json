@@ -1,0 +1,31 @@
+{
+  "name": "voidline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VOIDLINE — a web-only real-time multiplayer social-deduction game set aboard the orbital facility ORBITAL-09.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w shared && npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w shared",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "clean": "rimraf \"{shared,server,web}/dist\" \"web/.next\" \"**/*.tsbuildinfo\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  }
+}
