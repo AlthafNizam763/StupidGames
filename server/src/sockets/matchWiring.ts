@@ -40,8 +40,15 @@ export function createMatchManager(namespace: Namespace): MatchManager {
       namespace.to(channel(match.roomId)).emit(SERVER_EVENT.GAME_STATE, toSnapshot(match));
     },
 
-    onDelta(match) {
-      namespace.to(channel(match.roomId)).emit(SERVER_EVENT.GAME_DELTA, toDelta(match));
+    onDelta(match, keyframe) {
+      const delta = toDelta(match, keyframe);
+
+      // Nobody moved. Sending an empty player list is pure framing overhead,
+      // ten times a second, to every client in the room - and during a council
+      // or a task screen that is most of them, most of the time.
+      if (delta.players.length === 0) return;
+
+      namespace.to(channel(match.roomId)).emit(SERVER_EVENT.GAME_DELTA, delta);
     },
 
     onSabotageUpdate(match) {

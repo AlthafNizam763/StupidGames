@@ -40,6 +40,7 @@ function makePlayer(id: string, role: PlayerRole, alive = true): MatchPlayer {
     animation: 'IDLE',
     zone: 'CORRIDOR',
     lastInputSequence: 0,
+    lastBroadcast: null,
     lastInputAt: 0,
     killCooldownEndsAt: null,
     emergencyMeetingsLeft: 1,

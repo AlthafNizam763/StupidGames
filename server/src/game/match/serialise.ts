@@ -96,16 +96,64 @@ export function toSnapshot(match: Match): GameSnapshot {
  * position - hundreds of bytes per player per message for data that has not
  * changed since the match began.
  */
-export function toDelta(match: Match): MovementDelta {
-  return {
-    players: [...match.players.values()].map((player) => ({
-      id: player.userId,
-      position: { x: player.position.x, y: player.position.y },
-      facing: player.facing,
-      animation: player.alive ? player.animation : AnimationState.DEAD,
-    })),
-    serverTime: Date.now(),
-  };
+/**
+ * Wire precision for positions, in world units.
+ *
+ * Whole units. A player is 18 units across and the camera never zooms past
+ * roughly 1.5x, so half a unit is well under a pixel - and the client
+ * interpolates between deltas anyway, so it is smoothing across far more than
+ * the rounding error. The server keeps full precision internally; only the
+ * broadcast is quantised.
+ *
+ * This is worth more than the bytes it saves directly. `640.4372119903564`
+ * costs 18 characters and is different every single tick, so it defeats
+ * compression as well; `640` costs three and repeats.
+ */
+function quantise(value: number): number {
+  return Math.round(value);
+}
+
+/**
+ * The high-frequency movement broadcast.
+ *
+ * Carries only players whose quantised state changed since the last one. A
+ * twelve-player match spends most of its time with two thirds of the lobby
+ * standing at a terminal or reading chat, and re-sending an identical position
+ * ten times a second for each of them was the single largest use of bandwidth
+ * in the game (§40).
+ *
+ * `keyframe` forces every player in. The suppression is only safe because the
+ * client is guaranteed to learn about a player it has not heard from some other
+ * way; a periodic keyframe is what provides that guarantee, so that a client
+ * which somehow missed an update repairs itself within a second rather than
+ * holding a stale position for the rest of the match.
+ */
+export function toDelta(match: Match, keyframe = false): MovementDelta {
+  const players: MovementDelta['players'] = [];
+
+  for (const player of match.players.values()) {
+    const x = quantise(player.position.x);
+    const y = quantise(player.position.y);
+    const facing = player.facing;
+    // The dead read as DEAD on the wire whatever their animation says, so the
+    // comparison has to be against the value that is actually sent.
+    const animation = player.alive ? player.animation : AnimationState.DEAD;
+
+    const last = player.lastBroadcast;
+    const unchanged =
+      last !== null &&
+      last.x === x &&
+      last.y === y &&
+      last.facing === facing &&
+      last.animation === animation;
+
+    if (unchanged && !keyframe) continue;
+
+    player.lastBroadcast = { x, y, facing, animation };
+    players.push({ id: player.userId, position: { x, y }, facing, animation });
+  }
+
+  return { players, serverTime: Date.now() };
 }
 
 /**

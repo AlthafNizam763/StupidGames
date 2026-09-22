@@ -58,10 +58,18 @@ const EJECTION_DURATION_MS = 5_000;
 /** How long the results screen stays before the match is torn down. */
 const RESULTS_DURATION_MS = 20_000;
 
+/**
+ * How often a movement broadcast carries every player rather than only the
+ * ones who moved. One second: cheap enough to be invisible in the bandwidth
+ * figures, short enough that a stale position is never seen for long.
+ */
+const KEYFRAME_INTERVAL_MS = 1_000;
+
 export class MatchManager {
   private readonly matches = new Map<string, Match>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly broadcastAccumulator = new Map<string, number>();
+  private readonly keyframeAccumulator = new Map<string, number>();
 
   constructor(private readonly events: MatchEvents) {}
 
@@ -118,6 +126,7 @@ export class MatchManager {
         animation: AnimationState.IDLE,
         zone: zoneAt(map, spawn.x, spawn.y),
         lastInputSequence: 0,
+        lastBroadcast: null,
         lastInputAt: now,
         killCooldownEndsAt: null,
         emergencyMeetingsLeft: room.settings.emergencyMeetingLimit,
@@ -231,9 +240,22 @@ export class MatchManager {
 
     this.broadcastAccumulator.set(match.id, now);
 
-    if (match.phase === GamePhase.PLAYING || match.phase === GamePhase.SABOTAGE) {
-      this.events.onDelta(match);
-    }
+    if (match.phase !== GamePhase.PLAYING && match.phase !== GamePhase.SABOTAGE) return;
+
+    /*
+     * A keyframe once a second.
+     *
+     * Deltas otherwise carry only the players who moved, which is what makes
+     * a lobby standing around cost almost nothing (§40). The keyframe is the
+     * guarantee that makes that suppression safe: a client that somehow holds
+     * a stale position - a resumed socket, an adapter hiccup between instances
+     * - repairs itself within a second instead of keeping it for the match.
+     */
+    const elapsed = this.keyframeAccumulator.get(match.id) ?? 0;
+    const keyframe = now - elapsed >= KEYFRAME_INTERVAL_MS;
+    if (keyframe) this.keyframeAccumulator.set(match.id, now);
+
+    this.events.onDelta(match, keyframe);
   }
 
   /* ----------------------------------------------------------- phases - */

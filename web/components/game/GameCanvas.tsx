@@ -22,13 +22,43 @@ import { cn } from '@/lib/cn';
  * the joystick's own knob position while a thumb is down. Neither is in the
  * frame path.
  */
-export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
+export interface GameCanvasProps {
+  showStats?: boolean;
+  /**
+   * Handed the engine once it is running, and null when it is torn down.
+   *
+   * This is how the HUD reaches `engine.nearest()` to decide whether to offer
+   * "Use" or "Report". Hold it in a ref and poll at a few hertz - putting the
+   * engine in state, or reading proximity per frame, would re-render the tree
+   * at the frame rate and undo the entire reason this component keeps the
+   * engine in a ref.
+   *
+   * Called with null on teardown so a stale engine is never polled after the
+   * match ends.
+   */
+  onEngineReady?: (engine: Engine | null) => void;
+}
+
+export function GameCanvas({ showStats = false, onEngineReady }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
 
   const user = useSessionStore((s) => s.user);
   const gameplay = useSettingsStore((s) => s.gameplay);
   const controls = useSettingsStore((s) => s.controls);
+
+  /*
+   * The callback is held in a ref rather than read from the closure.
+   *
+   * If it were a dependency of the effect below, a caller passing an inline
+   * arrow - the obvious way to write it - would tear the engine down and build
+   * a new one on every render of the parent, restarting the match. This keeps
+   * the latest callback without making it a reason to re-run.
+   */
+  const onEngineReadyRef = useRef(onEngineReady);
+  useEffect(() => {
+    onEngineReadyRef.current = onEngineReady;
+  }, [onEngineReady]);
 
   const [stats, setStats] = useState<EngineStats | null>(null);
   const [failed, setFailed] = useState(false);
@@ -53,6 +83,10 @@ export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
 
     engine.spawnLocalPlayer(user.id, user.username, user.avatar);
     engineRef.current = engine;
+
+    // Only after `start()` succeeded, so a caller never holds an engine whose
+    // canvas was never attached.
+    onEngineReadyRef.current?.(engine);
 
     /*
      * The map is fetched after the loop is already running. Blocking on the
@@ -84,6 +118,9 @@ export function GameCanvas({ showStats = false }: { showStats?: boolean }) {
       clearInterval(zoneTimer);
       engine.stop();
       engineRef.current = null;
+      // Before anything else can poll it. A HUD holding a stopped engine would
+      // read a frozen world and keep offering actions against it.
+      onEngineReadyRef.current?.(null);
     };
     // Deliberately keyed on identity only. Re-creating the engine because a
     // settings toggle changed would restart the match.

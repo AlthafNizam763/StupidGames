@@ -28,7 +28,7 @@ import { repair, startSabotage } from '../SabotageManager';
 import { assignTasks, generatePuzzle, openTask, submitStep, teamProgress } from '../TaskManager';
 import { evaluate } from '../WinConditionManager';
 import { ORBITAL_09 } from '../maps';
-import { toSelfState, toSnapshot } from './serialise';
+import { toDelta, toSelfState, toSnapshot } from './serialise';
 import { MatchManager } from './MatchManager';
 import type { Match, MatchPlayer } from './types';
 
@@ -75,6 +75,7 @@ function makePlayer(index: number, role: PlayerRole): MatchPlayer {
     animation: 'IDLE',
     zone: 'CORRIDOR',
     lastInputSequence: 0,
+    lastBroadcast: null,
     lastInputAt: Date.now(),
     killCooldownEndsAt: null,
     emergencyMeetingsLeft: 1,
@@ -1253,5 +1254,133 @@ describe('match connections', () => {
     manager.setConnection(match, operatorsOf(match)[0]!.userId, ConnectionState.DISCONNECTED);
 
     assert.ok(match.outcome, 'a fully disconnected side did not resolve the match');
+  });
+});
+
+/* ===================================================== delta bandwidth = */
+
+describe('movement deltas', () => {
+  it('rounds positions to whole units', () => {
+    const match = makeMatch();
+    const player = operatorsOf(match)[0]!;
+    player.position.x = 640.4372119903564;
+    player.position.y = 400.98765;
+
+    const sent = toDelta(match).players.find((p) => p.id === player.userId)!;
+
+    /*
+     * Not only for the bytes. `640.4372119903564` is eighteen characters and
+     * different every tick, so it defeats compression as well; `640` is three
+     * and repeats. The server keeps full precision internally - this is the
+     * wire only.
+     */
+    assert.equal(sent.position.x, 640);
+    assert.equal(sent.position.y, 401);
+  });
+
+  it('omits players who have not moved since the last broadcast', () => {
+    const match = makeMatch();
+
+    // The first delta is unconditional: nobody has been told anything yet.
+    assert.equal(toDelta(match).players.length, match.players.size);
+
+    // Nothing moved in between.
+    assert.deepEqual(toDelta(match).players, []);
+  });
+
+  it('carries a player who moved, and only that player', () => {
+    const match = makeMatch();
+    toDelta(match);
+
+    const mover = operatorsOf(match)[0]!;
+    mover.position.x += 40;
+
+    const sent = toDelta(match).players;
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]!.id, mover.userId);
+  });
+
+  it('ignores movement too small to survive rounding', () => {
+    const match = makeMatch();
+    toDelta(match);
+
+    // Sub-unit jitter produces the same quantised position, so it must not
+    // put the player back on the wire ten times a second.
+    operatorsOf(match)[0]!.position.x += 0.02;
+    assert.deepEqual(toDelta(match).players, []);
+  });
+
+  it('sends a player once more when they stop', () => {
+    const match = makeMatch();
+    const mover = operatorsOf(match)[0]!;
+
+    toDelta(match);
+    mover.position.x += 40;
+    toDelta(match);
+
+    /*
+     * The resting position has to reach the clients, or everyone else
+     * interpolates toward where the player was still walking and leaves them
+     * standing a stride away from where the server says they are.
+     *
+     * It arrives because "stopped" means the position differs from the last
+     * one *sent*, not from the last one computed.
+     */
+    mover.position.x += 3;
+    const sent = toDelta(match).players;
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]!.id, mover.userId);
+
+    // And then nothing, for as long as they stand there.
+    assert.deepEqual(toDelta(match).players, []);
+  });
+
+  it('notices a change of facing or animation with no movement at all', () => {
+    const match = makeMatch();
+    toDelta(match);
+
+    const player = operatorsOf(match)[0]!;
+    player.facing = player.facing === 'RIGHT' ? 'LEFT' : 'RIGHT';
+
+    assert.equal(toDelta(match).players.length, 1, 'a turn on the spot was suppressed');
+  });
+
+  it('reports the dead as DEAD, and notices the moment they die', () => {
+    const match = makeMatch();
+    toDelta(match);
+
+    const victim = operatorsOf(match)[0]!;
+    victim.alive = false;
+
+    const sent = toDelta(match).players;
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]!.animation, 'DEAD');
+  });
+
+  it('sends everybody in a keyframe, however still they are', () => {
+    const match = makeMatch();
+    toDelta(match);
+    assert.deepEqual(toDelta(match).players, [], 'nothing moved');
+
+    /*
+     * The guarantee that makes suppression safe. A client holding a stale
+     * position - a resumed socket, an adapter hiccup between instances -
+     * repairs itself within a second rather than keeping it for the match.
+     */
+    assert.equal(toDelta(match, true).players.length, match.players.size);
+  });
+
+  it('is much smaller on the wire than sending everyone', () => {
+    const match = makeMatch(11, 1);
+    const everyone = JSON.stringify(toDelta(match, true)).length;
+
+    // A typical lull: most of the lobby is at a terminal or reading chat.
+    operatorsOf(match)[0]!.position.x += 40;
+    const movers = JSON.stringify(toDelta(match)).length;
+
+    assert.ok(
+      movers < everyone / 4,
+      `one mover cost ${movers} bytes against ${everyone} for the full roster`,
+    );
   });
 });

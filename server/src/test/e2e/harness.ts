@@ -96,11 +96,8 @@ const RECORDED_EVENTS = [
   'system:error',
 ];
 
-let portCursor = 4500;
-
 export async function startE2EServer(): Promise<E2EServer> {
   const mongo = await MongoMemoryServer.create();
-  const port = portCursor++;
 
   /*
    * Environment before imports.
@@ -110,7 +107,6 @@ export async function startE2EServer(): Promise<E2EServer> {
    * rather than at the top of the file.
    */
   process.env.NODE_ENV = 'test';
-  process.env.PORT = String(port);
   process.env.MONGODB_URI = mongo.getUri('voidline');
   process.env.CORS_ORIGINS = 'http://localhost:3000';
   process.env.JWT_SECRET ??= 'e2e-test-secret-'.padEnd(48, 'x');
@@ -126,9 +122,27 @@ export async function startE2EServer(): Promise<E2EServer> {
   await connectDatabase();
 
   const app = createApp();
+
+  /*
+   * Port 0: let the OS assign a free one.
+   *
+   * node:test runs test *files* in separate processes, so a counter in this
+   * module does not coordinate anything - each process starts it at the same
+   * number and the two e2e suites race for the same port. That produced a
+   * suite which passed alone and failed about one run in three together,
+   * which is worse than no suite at all, because the habit it teaches is to
+   * re-run it.
+   */
   const httpServer: HttpServer = await new Promise((resolve) => {
-    const server = app.listen(port, () => resolve(server));
+    const server = app.listen(0, () => resolve(server));
   });
+
+  const address = httpServer.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('expected a TCP address from the test server');
+  }
+  const port = address.port;
+
   const socketServer = createSocketServer(httpServer);
 
   const baseUrl = `http://localhost:${port}`;

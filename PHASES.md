@@ -30,8 +30,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 24 | Voice chat | **done** |
 | 25 | Anti-cheat / security hardening | **done** |
 | 26 | Testing | **done** |
-| 27 | Performance optimization | next |
-| 28 | Production deployment | |
+| 27 | Performance optimization | **done** |
+| 28 | Production deployment | next |
 
 ## Phase 1 — what was built
 
@@ -498,3 +498,58 @@ Both share a shape: an undefined property read through an API that has no reason
 ### Type-checking is not optional for tests
 
 Four of the new web tests passed while referring to enum members that do not exist — `ZoneId.HUB`, `TaskType.CALIBRATE`, `Facing.DOWN`. They resolved to `undefined`, no assertion depended on them, and the suite was green. `tsc` caught all of them. A test file is source.
+
+## Phase 27 — performance
+
+Split with the UI session: the engine, the renderer and the wire here; route-level code splitting there.
+
+### The wire was the whole problem
+
+Movement deltas went out ten times a second, carrying **every player whether or not they had moved**, at full floating-point precision. Measured on a twelve-player match:
+
+| | per broadcast | per client | server egress |
+| - | - | - | - |
+| before | 1558 B | 15.2 KB/s | 183 KB/s |
+| positions rounded to whole units | 1226 B | 12.0 KB/s | 144 KB/s |
+| + only players who moved | 535 B | 5.2 KB/s | 63 KB/s |
+| a lull with nobody moving | — | 0 | 0 |
+
+Roughly 55 MB an hour per player, down to under 19 — and most of a match is two thirds of the lobby standing at a terminal or reading chat, so the real figure is better than the table's 40%-moving assumption.
+
+Three changes, all inside the existing `MovementDelta` shape, so no client had to be touched:
+
+**Positions are quantised to whole world units.** A player is 18 units across and the camera never zooms past about 1.5x, so half a unit is well under a pixel, and the client interpolates across far more than the rounding error anyway. This is worth more than the bytes it removes directly: `640.4372119903564` is eighteen characters and different every tick, so it defeats compression as well; `640` is three and repeats.
+
+**Only players whose quantised state changed are sent**, compared against what was last *sent* rather than last computed — otherwise sub-unit jitter would put an idle player back on the wire ten times a second.
+
+**An empty delta is not sent at all.** Ten framed messages a second to every client in the room, carrying an empty array, is pure overhead.
+
+**A keyframe once a second** carries everyone regardless. This is what makes the suppression safe: a client holding a stale position repairs itself within a second instead of keeping it for the match.
+
+`permessage-deflate` was considered and rejected. Socket.IO disables it by default for good reasons — a zlib context per connection is around 300 KB of memory and compression costs CPU on every frame — and now that a typical delta is about 535 bytes it sits under the usual 1 KB compression threshold anyway. The quantisation already bought most of what compression would have.
+
+### Canvas
+
+The renderer was already culling off-screen geometry, clipping the floor grid to the viewport and mirroring sprites rather than drawing them twice. Two things were left:
+
+**`ctx.font` was assigned once per player per frame.** Names were drawn inline with each body, and assigning a font re-resolves the font stack — it is one of the most expensive things a 2D context does. Twelve players at 60fps is 720 font assignments a second to draw twelve short strings. Names are now a second pass over the already-culled list, with one font assignment for the lot.
+
+**Two per-frame allocations.** The culled list is a reused array rather than a fresh one each frame, and room labels are upper-cased once and cached instead of sixty times a second.
+
+### React re-renders
+
+Audited rather than changed: every component already uses an atomic Zustand selector. There are no selectors returning fresh objects or arrays, and no whole-store subscriptions — the two patterns that make a store re-render everything that touches it. The engine/React boundary holds: the loop never calls `setState`, movement deltas go straight to the engine, and the one channel back to React is the stats readout at about 1Hz. That boundary now has a test (`gameStore.test.ts`) asserting that twenty deltas produce zero store notifications.
+
+### Images
+
+There are none. No `web/public` directory, and not a single raster file in the client — the entire visual identity is SVG, canvas drawing and CSS. "Optimize images" is satisfied by there being nothing to optimize, which is the better outcome.
+
+### Bundle
+
+`next build` produces 31 chunks totalling 1042 KB raw, **334 KB gzipped** for the whole application. Route-level splitting is the UI session's half.
+
+### A flaky test, fixed
+
+The e2e harness picked its port from a module-level counter. `node:test` runs test *files* in separate processes, so the counter coordinated nothing: both suites started it at the same number and raced for the same port, and the suite failed about one run in three when run together while passing alone. It now binds port 0 and asks the OS what it got. Verified with five consecutive clean runs.
+
+A suite that fails intermittently is worse than no suite, because the habit it teaches is to re-run it until it is green.

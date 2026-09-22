@@ -26,6 +26,24 @@ export class Renderer {
   private cssHeight = 0;
   private dpr = 1;
 
+  /**
+   * Reused between frames to hold the entities that survived culling.
+   *
+   * A fresh array per frame would be sixty allocations a second for a list
+   * that is at most a dozen entries and dead by the next frame - exactly the
+   * garbage that produces a periodic hitch on a phone.
+   */
+  private readonly visibleScratch: Entity[] = [];
+
+  /**
+   * Upper-cased room names, cached.
+   *
+   * `toUpperCase()` allocates, and the map's room names never change, so doing
+   * it inside the render loop was building the same handful of strings sixty
+   * times a second for the garbage collector to clear up again.
+   */
+  private readonly upperLabels = new Map<string, string>();
+
   /** Set from the player's settings. Off skips the decorative passes. */
   effectsEnabled = true;
   showNames = true;
@@ -279,7 +297,11 @@ export class Renderer {
       ctx.translate(centreX, centreY);
       ctx.scale(inverse, inverse);
 
-      const label = zone.label.toUpperCase();
+      let label = this.upperLabels.get(zone.label);
+      if (label === undefined) {
+        label = zone.label.toUpperCase();
+        this.upperLabels.set(zone.label, label);
+      }
       ctx.letterSpacing = '2px';
       ctx.fillStyle = 'rgba(102,116,137,0.55)';
       ctx.fillText(label, 0, 0);
@@ -312,11 +334,60 @@ export class Renderer {
     }
   }
 
+  /**
+   * Every visible player, in two passes.
+   *
+   * Split because names need a font, and assigning ctx.font is one of the
+   * most expensive things a 2D context does - it re-resolves the font stack.
+   * Interleaving bodies and names meant setting it once per player per frame:
+   * twelve players at 60fps is 720 font assignments a second to draw twelve
+   * short strings. Setting it once and drawing them together costs one.
+   *
+   * Visibility is computed once in the first pass and reused, so the second
+   * does no culling arithmetic of its own.
+   */
   private drawEntities(ctx: CanvasRenderingContext2D, world: World): void {
+    const visible = this.visibleScratch;
+    visible.length = 0;
+
     for (const entity of world.entities.values()) {
       if (!this.camera.isVisible(entity.render.x, entity.render.y, entity.radius * 3)) continue;
+      visible.push(entity);
       this.drawOperator(ctx, entity);
     }
+
+    if (this.showNames) this.drawNames(ctx, visible);
+  }
+
+  /** Names for already-culled entities. One font assignment for the lot. */
+  private drawNames(ctx: CanvasRenderingContext2D, entities: readonly Entity[]): void {
+    const inverse = 1 / this.camera.scale;
+
+    ctx.save();
+    ctx.font = '600 13px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(5,7,12,0.85)';
+
+    for (const entity of entities) {
+      if (!entity.alive) continue;
+
+      ctx.save();
+      ctx.translate(entity.render.x, entity.render.y);
+      // Fixed pixel size regardless of zoom, so a name stays legible rather
+      // than scaling with the world.
+      ctx.scale(inverse, inverse);
+
+      const labelY = -(entity.radius + 10) * this.camera.scale;
+      ctx.strokeText(entity.username, 0, labelY);
+      ctx.fillStyle = entity.isLocal ? '#3fe0bc' : '#e8edf7';
+      ctx.fillText(entity.username, 0, labelY);
+
+      ctx.restore();
+    }
+
+    ctx.restore();
   }
 
   /**
@@ -379,27 +450,5 @@ export class Renderer {
 
     ctx.restore();
 
-    if (this.showNames && entity.alive) {
-      ctx.save();
-      ctx.translate(x, y);
-      // Names are drawn at a fixed pixel size regardless of zoom, so they stay
-      // legible rather than scaling with the world.
-      const inverse = 1 / this.camera.scale;
-      ctx.scale(inverse, inverse);
-
-      ctx.font = '600 13px Inter, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      const label = entity.username;
-      const labelY = -(r + 10) * this.camera.scale;
-
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(5,7,12,0.85)';
-      ctx.strokeText(label, 0, labelY);
-      ctx.fillStyle = entity.isLocal ? '#3fe0bc' : '#e8edf7';
-      ctx.fillText(label, 0, labelY);
-
-      ctx.restore();
-    }
   }
 }

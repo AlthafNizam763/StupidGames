@@ -12,6 +12,13 @@ import { AchievementId } from './game';
  * The text sits in the shared contract because both the profile screen and the
  * end-of-match summary render it, and because this is the natural extraction
  * point when i18n lands.
+ *
+ * NAMING. The wire protocol calls the hostile faction `SABOTEUR`; the player
+ * reads "the Cat". Every other player-facing surface gets that translation from
+ * `web/lib/fiction.ts`, but the strings here are rendered as written, so this
+ * file is the one place the rule cannot be enforced structurally. Anything a
+ * person reads in here says "the Cat" - and the `AchievementId` enum keeps
+ * saying `MASTER_SABOTEUR`, because an id is not copy.
  */
 export interface AchievementInfo {
   id: AchievementId;
@@ -43,9 +50,9 @@ export const ACHIEVEMENTS: Readonly<Record<AchievementId, AchievementInfo>> = {
   },
   [AchievementId.MASTER_SABOTEUR]: {
     id: AchievementId.MASTER_SABOTEUR,
-    name: 'Master Saboteur',
-    description: 'Won as a Saboteur without ever being voted on.',
-    hint: 'Win as a Saboteur while staying above suspicion.',
+    name: 'Nine Lives',
+    description: 'Won as the Cat without ever being voted on.',
+    hint: 'Win as the Cat while staying above suspicion.',
   },
   [AchievementId.OBJECTIVE_EXPERT]: {
     id: AchievementId.OBJECTIVE_EXPERT,
@@ -62,8 +69,8 @@ export const ACHIEVEMENTS: Readonly<Record<AchievementId, AchievementInfo>> = {
   [AchievementId.INVESTIGATOR]: {
     id: AchievementId.INVESTIGATOR,
     name: 'Investigator',
-    description: 'Cast the deciding vote against a Saboteur ten times.',
-    hint: 'Help eject 10 Saboteurs.',
+    description: 'Cast the deciding vote against the Cat ten times.',
+    hint: 'Help eject the Cat 10 times.',
   },
 };
 

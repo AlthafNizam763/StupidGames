@@ -53,6 +53,21 @@ export interface MatchPlayer {
   /** Epoch ms of the last accepted input, for the speed check. */
   lastInputAt: number;
 
+  /**
+   * What this player last looked like on the wire, for delta suppression.
+   *
+   * Movement deltas carry only players whose *quantised* state changed since
+   * the last broadcast, so a player standing at a terminal costs nothing. This
+   * holds the values that were actually sent - quantised, not the live
+   * floating-point position - because comparing against the live value would
+   * re-send a player every tick for sub-pixel jitter that never reaches the
+   * wire.
+   *
+   * Null until the first broadcast, which is what makes a new player's first
+   * delta unconditional.
+   */
+  lastBroadcast: { x: number; y: number; facing: Facing; animation: AnimationState } | null;
+
   /** Saboteurs only. */
   killCooldownEndsAt: number | null;
 
@@ -132,7 +147,8 @@ export interface Match {
 /** Everything the tick loop needs to tell the socket layer about. */
 export interface MatchEvents {
   onSnapshot: (match: Match) => void;
-  onDelta: (match: Match) => void;
+  /** `keyframe` asks for every player, not only those who moved. */
+  onDelta: (match: Match, keyframe: boolean) => void;
   onSabotageUpdate: (match: Match) => void;
   onMeetingOpenVoting: (match: Match) => void;
   onMeetingResolved: (match: Match) => void;
