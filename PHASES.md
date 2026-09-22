@@ -7,8 +7,8 @@ Progress against the 28-phase plan. A phase is only "done" when it type-checks, 
 | 1 | Repository audit + architecture | **done** |
 | 2 | Next.js frontend foundation | **done** |
 | 3 | Node.js backend foundation | **done** |
-| 4 | Authentication | next |
-| 5 | Home / Profile / Settings | |
+| 4 | Authentication | **done** |
+| 5 | Home / Profile / Settings | next |
 | 6 | Room creation and joining | |
 | 7 | Lobby | |
 | 8 | Socket.IO architecture | |
@@ -117,3 +117,38 @@ The authoritative server's foundation. No game logic and no authentication yet �
 **`trust proxy` is 1, not `true`.** The deploy targets sit behind exactly one proxy. Trusting every hop would let a client forge `X-Forwarded-For` and escape rate limiting entirely.
 
 **Mongoose 9 pre-save hooks have no `next` callback.** The signature is `(this, opts) => void | Promise<void>`; the callback form was removed.
+
+## Phase 4 — what was built
+
+Real accounts, end to end.
+
+**Server**
+- argon2id password hashing at OWASP's baseline cost, via `@node-rs/argon2` (prebuilt binaries, so no C toolchain on Windows).
+- Short-lived JWT access tokens plus a long-lived refresh token delivered as an httpOnly cookie, signed with separate secrets.
+- `POST /api/auth/register`, `/login`, `/refresh`, `/logout`, `/forgot-password`, `/reset-password` and `GET /api/auth/me`.
+- `PasswordReset` model storing only the SHA-256 of the emailed token, single use, one-hour TTL.
+- `requireAuth` middleware putting the caller on `req.auth`; a `userId` in a request body is never read.
+- A mail abstraction: SMTP when `SMTP_HOST` is set, otherwise a transport that logs the message and says plainly that nothing was sent.
+
+**Client**
+- Session store holding the access token in memory only, with restoration on load from the refresh cookie.
+- Sign-in, sign-up, forgot-password and reset-password screens, with server field errors mapped onto the inputs.
+- Route guards, and a minimal real `/home` showing the server-issued account so sign-in is not a dead end. The full home screen is Phase 5.
+
+**Verification**: 46 unit and integration tests against a real `mongod` (via `mongodb-memory-server`), plus a 34-check end-to-end pass driving the built server over HTTP.
+
+## Decisions made in Phase 4
+
+**The access token is never persisted.** Not `localStorage`, not a readable cookie. Anything on disk is readable by any script that runs on the page and outlives the tab. The cost is that a page refresh loses it, which is exactly what the refresh cookie is for.
+
+**Sign-in failures are indistinguishable, including in timing.** A missing account runs a real argon2 verification against a dummy hash before failing. Returning early would answer measurably faster and turn the endpoint into a way to enumerate registered addresses. The dummy has to be a genuine hash — a malformed one fails argon2's parser immediately and leaves the timing difference intact.
+
+**`forgot-password` always reports success.** Anything else is an enumeration oracle, so the client's confirmation screen is worded to match.
+
+**Usernames are unique case-insensitively and restricted to `[A-Za-z0-9_-]`.** In a game about working out who is lying, being able to register a name that renders identically to another player's is not a cosmetic problem.
+
+**The account is re-read on every refresh.** A player disabled ten minutes ago must not keep minting access tokens for the next thirty days on the strength of a cookie issued before the ban.
+
+**Missing JWT secrets are fatal in production and random in development.** A hard-coded development default is the value that eventually ships; 48 random bytes plus a loud warning is not, and the only cost is that a restart ends dev sessions.
+
+**Route guards are convenience, not security.** Everything they protect is enforced server-side. A guard running in the browser can be deleted by anyone who opens devtools.

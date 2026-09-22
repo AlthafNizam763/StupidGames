@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
+import { SessionBoot } from '@/components/auth/SessionBoot';
 import { Toaster } from '@/components/ui/Toaster';
 import './globals.css';
 
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
+        <SessionBoot />
         {children}
         <Toaster />
       </body>

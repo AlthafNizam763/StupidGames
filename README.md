@@ -6,13 +6,13 @@ A crew of specialists keeps the station alive. Most are **Operators**: they comp
 
 Everything runs in the browser — desktop, laptop, tablet and mobile all load the same application. There is no native app and no Flutter code in this repository.
 
-> **Status: PHASE 3 of 28 complete.** The monorepo, the protocol contract, the Next.js client foundation and the Express server foundation all exist and build. Authentication (Phase 4) is next, so there are no API endpoints beyond health yet. `PHASES.md` tracks what is done and what is next.
+> **Status: PHASE 4 of 28 complete.** Accounts work end to end: register, sign in, session restore, sign out and password reset. Matchmaking, lobbies and the game itself are Phases 5 onward. `PHASES.md` tracks what is done and what is next.
 
 ## Requirements
 
 - Node.js **>= 20** (developed on 24.15)
 - npm **>= 10** (workspaces)
-- MongoDB — local, or an Atlas connection string (needed from Phase 3)
+- MongoDB — local, or an Atlas connection string (required from Phase 4 for accounts)
 - Redis — optional, only needed to run more than one server instance
 
 ## Getting started

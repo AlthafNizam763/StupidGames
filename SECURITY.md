@@ -60,7 +60,7 @@ The general rule: **a client message names an intent, never a result.** "I want 
 
 - `helmet` for security headers; a Content-Security-Policy that does not need `unsafe-eval`.
 - CORS restricted to `CORS_ORIGINS`. Never `*` with credentials enabled.
-- `express-mongo-sanitize`, so a `$`-prefixed key in a body cannot become a query operator.
+- A request carrying a `$`-prefixed or dotted key is rejected outright, so it cannot become a query operator. (`express-mongo-sanitize` is not used: it is unmaintained and writes to `req.query`, a read-only getter in Express 5.)
 - Body size limits on every route.
 - Rate limiting per IP: 10/min on auth, 120/min elsewhere.
 - HTTPS everywhere in production, including the WebSocket origin.
@@ -94,3 +94,13 @@ Room codes use the same source, over an alphabet that excludes `0/O` and `1/I/L`
 ## Reporting a vulnerability
 
 Open a private security advisory rather than a public issue. Include reproduction steps and what a player could gain; a proof-of-concept against a local instance is more useful than against a live match.
+
+## Known limitations
+
+Recorded deliberately, so nothing here reads as stronger than it is.
+
+**Refresh tokens are not revocable.** A refresh issues a new token but the previous one stays valid until it expires, because these are stateless JWTs. Genuine rotation — with reuse detection, where presenting an already-spent refresh token invalidates the whole family — needs a server-side token store. That store is not built yet. In the meantime, a stolen refresh token is valid for up to its full lifetime unless the account is disabled, which *is* checked on every refresh.
+
+**Access tokens are not revocable either.** Signing out clears the refresh cookie and drops the in-memory access token, but an access token already captured stays valid for the remainder of its 15 minutes. A blacklist would close this, at the cost of shared state on every request for a 15-minute window on a token the user has already stopped using.
+
+**Rate limits are per instance.** `express-rate-limit` keeps its counters in process memory, so running two instances doubles the effective limit. Moving the store to Redis is part of the same work as the Socket.IO adapter (DEPLOYMENT.md).

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
@@ -31,6 +32,28 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1).default('mongodb://127.0.0.1:27017/voidline'),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  /*
+   * Token signing. Access and refresh use *different* secrets so a token minted
+   * for one purpose cannot be replayed as the other (SECURITY.md).
+   *
+   * 32 characters is the floor, not a recommendation - generate 48 random bytes:
+   *   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+   */
+  JWT_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+  JWT_REFRESH_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+  JWT_EXPIRES_IN: z.string().default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
+
+  /* Password reset delivery. With no SMTP host the mailer logs instead. */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  MAIL_FROM: z.string().default('no-reply@voidline.local'),
+
+  /** Where password-reset links point. The web client's origin. */
+  WEB_APP_URL: z.string().default('http://localhost:3000'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -51,6 +74,38 @@ if (!parsed.success) {
 
 const raw = parsed.data;
 
+/**
+ * Token secrets.
+ *
+ * In production both are mandatory - a server that signs sessions with a
+ * predictable key has no authentication at all, so this refuses to start.
+ *
+ * In development a missing secret is filled with 48 genuinely random bytes and
+ * a loud warning. That is real entropy, not a fixed fallback, so nothing is
+ * weakened; the trade is that every restart invalidates existing sessions,
+ * which the warning says outright. The alternative - a hard-coded development
+ * default - is exactly the value that eventually ships to production.
+ */
+function resolveSecret(name: string, value: string | undefined): string {
+  if (value) return value;
+
+  if (raw.NODE_ENV === 'production') {
+    process.stderr.write(
+      `\nVOIDLINE server cannot start: ${name} is required in production.\n` +
+        `Generate one with:\n` +
+        `  node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"\n\n`,
+    );
+    process.exit(1);
+  }
+
+  process.stderr.write(
+    `\n[voidline] WARNING: ${name} is not set. Using a random secret for this ` +
+      `process only - every restart will sign out every user. Set ${name} in .env ` +
+      `to keep sessions across restarts.\n\n`,
+  );
+  return randomBytes(48).toString('base64url');
+}
+
 export const config = {
   nodeEnv: raw.NODE_ENV,
   isProduction: raw.NODE_ENV === 'production',
@@ -67,6 +122,25 @@ export const config = {
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean),
+
+  webAppUrl: raw.WEB_APP_URL.replace(/\/$/, ''),
+
+  auth: {
+    jwtSecret: resolveSecret('JWT_SECRET', raw.JWT_SECRET),
+    jwtRefreshSecret: resolveSecret('JWT_REFRESH_SECRET', raw.JWT_REFRESH_SECRET),
+    accessTokenTtl: raw.JWT_EXPIRES_IN,
+    refreshTokenTtl: raw.JWT_REFRESH_EXPIRES_IN,
+  },
+
+  mail: {
+    /** With no host configured the mailer logs the message instead of sending. */
+    host: raw.SMTP_HOST,
+    port: raw.SMTP_PORT,
+    user: raw.SMTP_USER,
+    password: raw.SMTP_PASSWORD,
+    from: raw.MAIL_FROM,
+    isConfigured: Boolean(raw.SMTP_HOST),
+  },
 } as const;
 
 export type Config = typeof config;

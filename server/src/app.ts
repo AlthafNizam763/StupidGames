@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import cors, { type CorsOptions } from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
@@ -16,8 +17,8 @@ import { apiRouter, healthRouter } from './routes';
  *
  * Middleware order is deliberate and worth preserving:
  *
- *   id -> logging -> security headers -> CORS -> body parsing -> injection
- *   guard -> health -> rate limit -> routes -> 404 -> errors
+ *   id -> logging -> security headers -> CORS -> body parsing -> cookies ->
+ *   injection guard -> health -> rate limit -> routes -> 404 -> errors
  *
  * The correlation id comes first so every later log line carries it. Health
  * sits before the rate limiter so a platform probe is never throttled. The
@@ -78,6 +79,10 @@ export function createApp(): Express {
   // API accepts is anywhere near 100kb.
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
+
+  // Parses the httpOnly refresh cookie. Unsigned: the cookie's value is a JWT,
+  // which already carries its own signature.
+  app.use(cookieParser());
 
   app.use(rejectMongoOperators);
 

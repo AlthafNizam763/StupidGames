@@ -13,7 +13,9 @@ import { config } from '../config/env';
  * development is how passwords end up in a log file forever.
  */
 export const logger = pino({
-  level: config.logLevel,
+  // Tests assert on behaviour, not on log output, and a passing suite that
+  // prints a hundred lines of INFO hides the failures that matter.
+  level: config.isTest ? 'silent' : config.logLevel,
   redact: {
     paths: [
       'req.headers.authorization',
